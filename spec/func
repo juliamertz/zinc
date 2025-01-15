@@ -1,0 +1,5 @@
+use io
+
+func greet(name str) -> void
+  io.print('Hello ' .. name)
+end

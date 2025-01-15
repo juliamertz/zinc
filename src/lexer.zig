@@ -1,61 +1,205 @@
 const std = @import("std");
+const utils = @import("./utils.zig");
+
+pub const Keyword = enum {
+    let,
+    mut,
+    function,
+    match,
+    use,
+
+    return_token,
+    if_token,
+    else_token,
+    true_token,
+    false_token,
+
+    fn from_str(str: []const u8) ?Keyword {
+        const map = std.StaticStringMap(Keyword).initComptime(.{
+            .{ "let", .let },
+            .{ "mut", .mut },
+            .{ "func", .function },
+            .{ "match", .match },
+            .{ "use", .use },
+
+            .{ "return", .return_token },
+            .{ "if", .if_token },
+            .{ "else", .else_token },
+
+            .{ "true", .true_token },
+            .{ "false", .false_token },
+        });
+        return map.get(str);
+    }
+};
 
 pub const Token = union(enum) {
     ident: []const u8,
     integer: []const u8,
+    keyword: Keyword,
 
+    string_literal: []const u8,
+    // single_quote,
+    // double_quote,
+
+    dot,
     assign,
     plus,
+    minus,
+    greater_than,
+    less_than,
+    concat,
 
-    let,
+    lcurly,
+    rcurly,
+    lbracket,
+    rbracket,
+    lparen,
+    rparen,
+
+    arrow,
 
     illegal,
     eof,
 };
 
 pub const Lexer = struct {
-    const Self = @This();
-
-    pos: usize = 0,
+    position: usize = 0,
     content: []const u8,
 
-    fn current(self: *Self) ?u8 {
-        if (self.pos < 0 or self.pos >= self.content.len) {
-            return null;
-        }
-        return self.content[self.pos - 1];
+    const Self = @This();
+
+    pub fn new(content: []const u8) Self {
+        return Self{ .content = content, .position = 0 };
     }
 
-    fn advance(self: *Self) ?u8 {
-        if (self.pos < self.content.len) {
-            self.pos += 1;
-            return self.current();
+    fn current(self: *Self) u8 {
+        if (self.position >= self.content.len) {
+            return 0;
         }
-        return null;
+        return self.content[self.position];
     }
 
-    fn next_token(self: *Self) ?Token {
-        if (self.advance()) |ch| {
-            return switch (ch) {
-                '=' => .assign,
-                '+' => .plus,
-                else => .illegal,
-            };
+    fn lookahead(self: *Self) u8 {
+        if (self.position + 1 >= self.content.len) {
+            return 0;
+        }
+        return self.content[self.position + 1];
+    }
+
+    fn advance(self: *Self) void {
+        self.position += 1;
+    }
+
+    fn skip_whitespace(self: *Self) void {
+        while (utils.is_whitespace(self.current())) {
+            self.advance();
+        }
+    }
+
+    fn read_token(self: *Self) Token {
+        self.skip_whitespace();
+
+        // std.debug.print("current: {c}\n", .{self.current()});
+        return switch (self.current()) {
+            '=' => .assign,
+            '+' => .plus,
+            '-' => {
+                if (self.lookahead() == '>') {
+                    self.advance();
+                    return .arrow;
+                }
+                return .minus;
+            },
+            '>' => .greater_than,
+            '<' => .less_than,
+            '{' => .lcurly,
+            '}' => .rcurly,
+            '[' => .lbracket,
+            ']' => .rbracket,
+            '(' => .lparen,
+            ')' => .rparen,
+            '.' => {
+                if (self.lookahead() == '.') {
+                    self.advance();
+                    return .concat;
+                } else {
+                    return .dot;
+                }
+            },
+            '\'' => {
+                self.advance();
+                return .{ .string_literal = self.read_until('\'') };
+            },
+            '"' => {
+                self.advance();
+                return .{ .string_literal = self.read_until('"') };
+            },
+
+            'a'...'z', 'A'...'Z', '_' => {
+                const ident = self.read_ident();
+                // self.position -= 1;
+                if (Keyword.from_str(ident)) |keyword| {
+                    return .{ .keyword = keyword };
+                }
+                return .{ .ident = ident };
+            },
+            '0'...'9' => .{ .integer = self.read_int() },
+
+            0 => .eof,
+            else => .illegal,
+        };
+    }
+
+    // TODO: cleanup read functions
+
+    fn read_until(self: *Self, ch: u8) []const u8 {
+        const start = self.position;
+        while (self.current() != ch) {
+            self.advance();
         }
 
-        return null;
+        return self.content[start..self.position];
+    }
+
+    // TODO: i don't understand why the offset D:
+    fn read_ident(self: *Self) []const u8 {
+        const start = self.position;
+        while (utils.is_letter(self.lookahead())) {
+            self.advance();
+        }
+
+        return self.content[start .. self.position + 1];
+    }
+
+    fn read_int(self: *Self) []const u8 {
+        const start = self.position;
+        while (std.ascii.isDigit(self.lookahead())) {
+            self.advance();
+        }
+
+        return self.content[start .. self.position + 1];
     }
 };
 
 pub fn tokenize(content: []const u8) ![]Token {
-    var lexer = Lexer{ .content = content, .pos = 0 };
-
     var tokens = std.ArrayList(Token).init(std.heap.page_allocator);
     defer tokens.deinit();
 
-    while (lexer.next_token()) |tok| {
-        try tokens.append(tok);
-        // std.debug.print("current: {}\n", .{tok});
+    var lexer = Lexer.new(content);
+
+    while (true) {
+        const token = lexer.read_token();
+        try tokens.append(token);
+        switch (token) {
+            .ident => |i| std.debug.print("ident: {s}\n", .{i}),
+            .integer => |i| std.debug.print("int: {s}\n", .{i}),
+            .string_literal => |i| std.debug.print("string: {s}\n", .{i}),
+            else => std.debug.print("{}\n", .{token}),
+        }
+
+        if (token == .eof) break;
+        lexer.advance();
     }
 
     return tokens.items;
