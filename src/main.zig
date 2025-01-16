@@ -13,5 +13,5 @@ pub fn main() !void {
 
     // _ = try lexer.tokenize(data);
 
-    _ = try repl.start_repl();
+    _ = try repl.start();
 }
