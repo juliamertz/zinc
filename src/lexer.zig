@@ -8,6 +8,7 @@ pub const Keyword = enum {
     match,
     use,
 
+    pub_token,
     return_token,
     if_token,
     else_token,
@@ -22,10 +23,10 @@ pub const Keyword = enum {
             .{ "match", .match },
             .{ "use", .use },
 
+            .{ "pub", .pub_token },
             .{ "return", .return_token },
             .{ "if", .if_token },
             .{ "else", .else_token },
-
             .{ "true", .true_token },
             .{ "false", .false_token },
         });
@@ -39,16 +40,18 @@ pub const Token = union(enum) {
     keyword: Keyword,
 
     string_literal: []const u8,
-    // single_quote,
-    // double_quote,
+    // raw_string_literal: []const u8,
 
-    dot,
+    concat,
     assign,
     plus,
     minus,
     greater_than,
     less_than,
-    concat,
+
+    dot,
+    colon,
+    semicolon,
 
     lcurly,
     rcurly,
@@ -97,7 +100,7 @@ pub const Lexer = struct {
         }
     }
 
-    fn read_token(self: *Self) Token {
+    pub fn read_token(self: *Self) Token {
         self.skip_whitespace();
 
         // std.debug.print("current: {c}\n", .{self.current()});
@@ -119,6 +122,8 @@ pub const Lexer = struct {
             ']' => .rbracket,
             '(' => .lparen,
             ')' => .rparen,
+            ':' => .colon,
+            ';' => .semicolon,
             '.' => {
                 if (self.lookahead() == '.') {
                     self.advance();
@@ -182,6 +187,7 @@ pub const Lexer = struct {
     }
 };
 
+// populate list of tokens based on given input string
 pub fn tokenize(buff: *std.ArrayList(Token), content: []const u8) !void {
     var lexer = Lexer.new(content);
 

@@ -1,5 +1,5 @@
 const std = @import("std");
-const lexer = @import("./lexer.zig");
+const lex = @import("./lexer.zig");
 
 const alloc = std.heap.page_allocator;
 
@@ -17,10 +17,9 @@ pub fn start() !void {
         if (try read_input()) |stdin| {
             defer alloc.free(stdin);
 
-            var tokens = std.ArrayList(lexer.Token).init(alloc);
+            var tokens = std.ArrayList(lex.Token).init(alloc);
             defer tokens.deinit();
-
-            try lexer.tokenize(&tokens, stdin);
+            try lex.tokenize(&tokens, stdin);
 
             for (tokens.items) |tok| {
                 std.debug.print("{any}\n", .{tok});

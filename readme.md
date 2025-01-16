@@ -1,5 +1,9 @@
 # My unnamed and unfinished language
 
+### A file is a module
+
+...
+
 ### It's just an expression bro
 
 ...

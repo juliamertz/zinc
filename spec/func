@@ -1,5 +1,3 @@
-use io
-
-func greet(name str) -> void
-  io.print('Hello ' .. name)
-end
+pub func greet(name) {
+  io.print('Hello ' .. name);
+}

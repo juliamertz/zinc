@@ -1,17 +1,31 @@
 const std = @import("std");
-// const lexer = @import("./lexer.zig");
-const repl = @import("./repl.zig");
+const utils = @import("./utils.zig");
 
 pub fn main() !void {
-    // const alloc = std.heap.page_allocator;
+    var args = std.process.args();
+    _ = args.skip();
 
-    // const filename = "spec/func";
-    // const data = try std.fs.cwd().readFileAlloc(alloc, filename, std.math.maxInt(usize));
-    // defer alloc.free(data);
+    const stdout = std.io.getStdOut().writer();
 
-    // std.debug.print("input data:\n{s}\ntokens:\n", .{data});
+    if (args.next()) |subcommand| {
+        if (utils.str_cmp(subcommand, "repl")) {
+            try @import("./repl.zig").start();
+        }
+        //
+        else if (utils.str_cmp(subcommand, "process")) {
+            const alloc = std.heap.page_allocator;
+            const max = std.math.maxInt(usize);
+            const content = try std.fs.cwd().readFileAlloc(alloc, "./spec/var", max);
+            defer alloc.free(content);
+            try stdout.print("content: {s}\n", .{content});
 
-    // _ = try lexer.tokenize(data);
+            const parse = @import("./parser.zig");
+            const parser = parse.Parser.new(content);
 
-    _ = try repl.start();
+            try stdout.print("{any}\n", .{parser});
+        }
+    } else {
+        try stdout.print("No subcommand given.\n", .{});
+        std.process.exit(1);
+    }
 }
