@@ -15,16 +15,24 @@
       perSystem =
         { pkgs, ... }:
         {
-          # packages.default = ;
+          packages.default = pkgs.stdenv.mkDerivation {
+            name = "mylang";
+            src = ./.;
 
-          devShells.default = with pkgs; mkShell {
-            packages = [ zig ];
+            nativeBuildInputs = with pkgs; [ zig ];
+
+            configurePhase = ''
+              export ZIG_GLOBAL_CACHE_DIR=$(mktemp -d)
+            '';
+
+            buildPhase = ''
+              zig build --prefix $out
+            '';
           };
 
-          # apps.default = {
-          #   type = "app";
-          #   program = ;
-          # };
+          devShells.default = pkgs.mkShell {
+            packages = with pkgs; [ zig ];
+          };
         };
     };
 }
