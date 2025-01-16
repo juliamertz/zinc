@@ -182,25 +182,17 @@ pub const Lexer = struct {
     }
 };
 
-pub fn tokenize(content: []const u8) ![]Token {
-    var tokens = std.ArrayList(Token).init(std.heap.page_allocator);
-    defer tokens.deinit();
-
+pub fn tokenize(buff: *std.ArrayList(Token), content: []const u8) !void {
     var lexer = Lexer.new(content);
 
     while (true) {
         const token = lexer.read_token();
-        try tokens.append(token);
-        switch (token) {
-            .ident => |i| std.debug.print("ident: {s}\n", .{i}),
-            .integer => |i| std.debug.print("int: {s}\n", .{i}),
-            .string_literal => |i| std.debug.print("string: {s}\n", .{i}),
-            else => std.debug.print("{}\n", .{token}),
+        try buff.append(token);
+
+        if (token == .eof) {
+            break;
+        } else {
+            lexer.advance();
         }
-
-        if (token == .eof) break;
-        lexer.advance();
     }
-
-    return tokens.items;
 }
