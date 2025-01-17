@@ -1,5 +1,5 @@
 const std = @import("std");
-const utils = @import("./utils.zig");
+const utils = @import("utils.zig");
 
 pub const Keyword = enum {
     let,
@@ -34,64 +34,77 @@ pub const Keyword = enum {
     }
 };
 
+pub const Operator = enum {
+    add,
+    subtract,
+    multiply,
+    divide,
+
+    assign,
+    equal,
+    not_equal,
+    less_or_eq,
+    less_than,
+    greater_than,
+    greater_or_eq,
+
+    concat,
+};
+
 pub const Token = union(enum) {
     ident: []const u8,
     integer: []const u8,
     keyword: Keyword,
+    operator: Operator,
 
     string_literal: []const u8,
     // raw_string_literal: []const u8,
 
-    concat,
-    assign,
-    plus,
-    minus,
-    greater_than,
-    less_than,
-
     dot,
+    comma,
     colon,
     semicolon,
 
-    lcurly,
-    rcurly,
+    lsquirly,
+    rsquirly,
     lbracket,
     rbracket,
     lparen,
     rparen,
-
-    arrow,
 
     illegal,
     eof,
 };
 
 pub const Lexer = struct {
-    position: usize = 0,
+    read_position: usize,
+    position: usize,
     content: []const u8,
 
     const Self = @This();
 
     pub fn new(content: []const u8) Self {
-        return Self{ .content = content, .position = 0 };
+        return Self{
+            .content = content,
+            .position = 0,
+            .read_position = 0,
+        };
     }
 
     fn current(self: *Self) u8 {
-        if (self.position >= self.content.len) {
+        if (self.read_position >= self.content.len) {
             return 0;
         }
-        return self.content[self.position];
+
+        return self.content[self.read_position];
     }
 
     fn lookahead(self: *Self) u8 {
-        if (self.position + 1 >= self.content.len) {
+        if (self.read_position + 1 >= self.content.len) {
             return 0;
         }
-        return self.content[self.position + 1];
-    }
 
-    fn advance(self: *Self) void {
-        self.position += 1;
+        return self.content[self.read_position + 1];
     }
 
     fn skip_whitespace(self: *Self) void {
@@ -100,34 +113,35 @@ pub const Lexer = struct {
         }
     }
 
-    pub fn read_token(self: *Self) Token {
+    pub fn advance(self: *Self) void {
+        self.position = self.read_position;
+        self.read_position += 1;
+    }
+
+    pub fn readToken(self: *Self) Token {
         self.skip_whitespace();
 
-        // std.debug.print("current: {c}\n", .{self.current()});
         return switch (self.current()) {
-            '=' => .assign,
-            '+' => .plus,
-            '-' => {
-                if (self.lookahead() == '>') {
-                    self.advance();
-                    return .arrow;
-                }
-                return .minus;
-            },
-            '>' => .greater_than,
-            '<' => .less_than,
-            '{' => .lcurly,
-            '}' => .rcurly,
+            '=' => .{ .operator = .assign },
+            '+' => .{ .operator = .add },
+            '*' => .{ .operator = .multiply },
+            '/' => .{ .operator = .divide },
+            '-' => .{ .operator = .subtract },
+            '>' => .{ .operator = .greater_than },
+            '<' => .{ .operator = .less_than },
+            '{' => .lsquirly,
+            '}' => .rsquirly,
             '[' => .lbracket,
             ']' => .rbracket,
             '(' => .lparen,
             ')' => .rparen,
             ':' => .colon,
             ';' => .semicolon,
+            ',' => .comma,
             '.' => {
                 if (self.lookahead() == '.') {
                     self.advance();
-                    return .concat;
+                    return .{ .operator = .concat };
                 } else {
                     return .dot;
                 }
@@ -143,7 +157,6 @@ pub const Lexer = struct {
 
             'a'...'z', 'A'...'Z', '_' => {
                 const ident = self.read_ident();
-                // self.position -= 1;
                 if (Keyword.from_str(ident)) |keyword| {
                     return .{ .keyword = keyword };
                 }
@@ -156,34 +169,32 @@ pub const Lexer = struct {
         };
     }
 
-    // TODO: cleanup read functions
-
     fn read_until(self: *Self, ch: u8) []const u8 {
-        const start = self.position;
+        const start = self.read_position;
         while (self.current() != ch) {
             self.advance();
         }
 
-        return self.content[start..self.position];
+        return self.content[start..self.read_position];
     }
 
     // TODO: i don't understand why the offset D:
     fn read_ident(self: *Self) []const u8 {
-        const start = self.position;
+        const start = self.read_position;
         while (utils.is_letter(self.lookahead())) {
             self.advance();
         }
 
-        return self.content[start .. self.position + 1];
+        return self.content[start .. self.read_position + 1];
     }
 
     fn read_int(self: *Self) []const u8 {
-        const start = self.position;
+        const start = self.read_position;
         while (std.ascii.isDigit(self.lookahead())) {
             self.advance();
         }
 
-        return self.content[start .. self.position + 1];
+        return self.content[start .. self.read_position + 1];
     }
 };
 
@@ -192,7 +203,7 @@ pub fn tokenize(buff: *std.ArrayList(Token), content: []const u8) !void {
     var lexer = Lexer.new(content);
 
     while (true) {
-        const token = lexer.read_token();
+        const token = lexer.readToken();
         try buff.append(token);
 
         if (token == .eof) {
@@ -200,5 +211,72 @@ pub fn tokenize(buff: *std.ArrayList(Token), content: []const u8) !void {
         } else {
             lexer.advance();
         }
+    }
+}
+
+const assertEq = std.testing.expectEqualDeep;
+
+test "Lexer - special charachters" {
+    const input = "=({}+,);";
+    var lex = Lexer.new(input);
+
+    const tokens = [_]Token{
+        .{ .operator = .assign },
+        .lparen,
+        .lsquirly,
+        .rsquirly,
+        .{ .operator = .add },
+        .comma,
+        .rparen,
+        .semicolon,
+        .eof,
+    };
+
+    for (tokens) |token| {
+        const tok = lex.readToken();
+        lex.advance();
+        try assertEq(token, tok);
+    }
+}
+
+test "Lexer - let statement" {
+    const input = "let woof = true;";
+    var lex = Lexer.new(input);
+
+    const tokens = [_]Token{
+        .{ .keyword = .let },
+        .{ .ident = "woof" },
+        .{ .operator = .assign },
+        .{ .keyword = .true_token },
+        .semicolon,
+        .eof,
+    };
+
+    for (tokens) |token| {
+        const tok = lex.readToken();
+        lex.advance();
+        try assertEq(token, tok);
+    }
+}
+
+test "Lexer - rand" {
+    const input = "let twohundredfifty = 25 * 10;";
+    var lex = Lexer.new(input);
+
+    const tokens = [_]Token{
+        .{ .keyword = .let },
+        .{ .ident = "twohundredfifty" },
+        .{ .operator = .assign },
+        .{ .integer = "25" },
+        .{ .operator = .multiply },
+        .{ .integer = "10" },
+        .semicolon,
+        .eof,
+    };
+
+    for (tokens) |token| {
+        const tok = lex.readToken();
+        lex.advance();
+        try assertEq(token, tok);
     }
 }

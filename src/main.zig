@@ -1,9 +1,18 @@
 const std = @import("std");
-const utils = @import("./utils.zig");
+const utils = @import("utils.zig");
+const lex = @import("lexer.zig");
 
 pub fn main() !void {
     var args = std.process.args();
     _ = args.skip();
+
+    // std.debug.print("{any}", .{@typeInfo(lex.Token)});
+
+    // const parse = @import("parser.zig");
+    // var parser = parse.Parser.new("aap = ");
+    // _ = try parser.parse_let_statement();
+    // // std.debug.print("statemtent: {any}", .{thing});
+    std.process.exit(0);
 
     const stdout = std.io.getStdOut().writer();
 
@@ -20,9 +29,10 @@ pub fn main() !void {
             try stdout.print("content: {s}\n", .{content});
 
             const parse = @import("./parser.zig");
-            const parser = parse.Parser.new(content);
+            var parser = parse.Parser.new(content);
 
-            try stdout.print("{any}\n", .{parser});
+            const stmnt = try parser.parseStatement();
+            try std.json.stringify(&stmnt, .{ .whitespace = .indent_2 }, std.io.getStdOut().writer());
         }
     } else {
         try stdout.print("No subcommand given.\n", .{});

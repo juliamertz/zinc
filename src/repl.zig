@@ -1,5 +1,6 @@
 const std = @import("std");
-const lex = @import("./lexer.zig");
+const lex = @import("lexer.zig");
+const parse = @import("parser.zig");
 
 const alloc = std.heap.page_allocator;
 
@@ -16,6 +17,9 @@ pub fn start() !void {
     while (true) {
         if (try read_input()) |stdin| {
             defer alloc.free(stdin);
+
+            // const parser = parse.Parser.new(stdin);
+            // parser.parse_let_statement()
 
             var tokens = std.ArrayList(lex.Token).init(alloc);
             defer tokens.deinit();

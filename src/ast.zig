@@ -1,5 +1,5 @@
 const std = @import("std");
-const lex = @import("./lexer.zig");
+const lex = @import("lexer.zig");
 
 pub const Node = union(enum) {
     module: Module,
@@ -16,15 +16,16 @@ pub const Statement = union(enum) {
     let: LetStatement,
 };
 
-pub const OperatorExpression = struct {
-    // TODO: recursive expression instead of int
-    left: u32,
-    operator: lex.Token,
-    right: u32,
+pub const Expression = union(enum) {
+    // need to use pointer to avoid allocating struct of infinite size
+    operator: *const OperatorExpression,
+    integer_literal: i64,
 };
 
-pub const Expression = union(enum) {
-    operator: OperatorExpression,
+pub const OperatorExpression = struct {
+    left: Expression,
+    operator: lex.Token,
+    right: Expression,
 };
 
 pub const Module = struct {
