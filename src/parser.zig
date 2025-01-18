@@ -112,9 +112,9 @@ pub const Parser = struct {
         };
     }
 
-    fn parseOperatorExpression(self: *Self) ParseError!ast.OperatorExpression {
+    fn parseOperatorExpression(self: *Self, left: ast.Expression) ParseError!ast.OperatorExpression {
         return ast.OperatorExpression{
-            .left = .{ .integer_literal = try self.parseIntegerLiteral() },
+            .left = left,
             .operator = .{ .operator = .multiply }, // TODO: parse op
             .right = try self.parseExpression(),
         };
@@ -122,29 +122,16 @@ pub const Parser = struct {
 
     pub fn parseExpression(self: *Self) ParseError!ast.Expression {
         switch (self.curr_token.?) {
-            .integer => |_| {
+            .integer => {
+                const tok = .{ .integer_literal = try self.parseIntegerLiteral() };
                 switch (self.peek_token.?) {
                     .operator => {
-                        const expr = try self.parseOperatorExpression();
+                        const expr = try self.parseOperatorExpression(tok);
                         return .{ .operator = &expr };
                     },
                     .integer => return ParseError.InvalidToken,
-                    else => {},
+                    else => return tok,
                 }
-                // if (self.peek_token.?.isOperator()) {
-                //     const left = try self.parse_integer_literal();
-                //     self.next_token();
-                //     const right = try self.parse_integer_literal();
-                //
-                //     return .{
-                //         .operator = &ast.OperatorExpression{
-                //             .left = .{ .integer_literal = left },
-                //             .operator = .multiply,
-                //             .right = .{ .integer_literal = right },
-                //         },
-                //     };
-                // }
-                // return .{ .integer_literal = try self.parseIntegerLiteral() };
             },
             else => {
                 std.debug.print("in parse expression: {any}", .{self.curr_token});
