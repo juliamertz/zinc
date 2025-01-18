@@ -21,7 +21,8 @@ pub fn start() !void {
             const stdout = std.io.getStdOut().writer();
             var parser = parse.Parser.new(stdin);
             const stmnt = try parser.parseStatement();
-            try stdout.print("{any}\n", .{stmnt});
+            try std.json.stringify(stmnt, .{ .whitespace = .indent_2 }, stdout);
+            try stdout.print("\n", .{});
         }
     }
 }

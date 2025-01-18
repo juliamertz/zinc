@@ -186,3 +186,28 @@ test "Parse - expressions" {
     var parser = Parser.new(content);
     try std.testing.expectEqualDeep(try parser.parseStatement(), tree);
 }
+
+test "Parse - expressions complex" {
+    const content = "let twohundredfifty = 25 * 10 + 30;";
+    const tree = ast.Statement{
+        .let = .{
+            .identifier = "twohundredfifty",
+            .value = .{
+                .operator = &ast.OperatorExpression{
+                    .left = .{ .integer_literal = 25 },
+                    .operator = .{ .operator = .multiply },
+                    .right = .{
+                        .operator = &ast.OperatorExpression{
+                            .left = .{ .integer_literal = 10 },
+                            .operator = .{ .operator = .add },
+                            .right = .{ .integer_literal = 30 },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    var parser = Parser.new(content);
+    try std.testing.expectEqualDeep(try parser.parseStatement(), tree);
+}
