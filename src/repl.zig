@@ -18,16 +18,10 @@ pub fn start() !void {
         if (try read_input()) |stdin| {
             defer alloc.free(stdin);
 
-            // const parser = parse.Parser.new(stdin);
-            // parser.parse_let_statement()
-
-            var tokens = std.ArrayList(lex.Token).init(alloc);
-            defer tokens.deinit();
-            try lex.tokenize(&tokens, stdin);
-
-            for (tokens.items) |tok| {
-                std.debug.print("{any}\n", .{tok});
-            }
+            const stdout = std.io.getStdOut().writer();
+            var parser = parse.Parser.new(stdin);
+            const stmnt = try parser.parseStatement();
+            try stdout.print("{any}\n", .{stmnt});
         }
     }
 }

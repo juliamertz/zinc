@@ -7,6 +7,7 @@ pub const ParseError = error{
     AssignmentExpected,
     SemicolonExpected,
     IntegerExpected,
+    OperatorExpected,
     InvalidInteger,
     InvalidToken, // Maybe this is a bit too general
 };
@@ -52,26 +53,7 @@ pub const Parser = struct {
     //     }
     // }
 
-    pub fn parseStatement(self: *Self) !ast.Statement {
-        const statement = switch (self.curr_token.?) {
-            .keyword => |kw| switch (kw) {
-                .let => {
-                    self.nextToken();
-                    return ast.Statement{
-                        .let = try self.parseLetStatement(),
-                    };
-                },
-                else => unreachable,
-            },
-            else => unreachable,
-        };
-
-        if (self.curr_token.? != lex.Token.semicolon) {
-            return ParseError.SemicolonExpected;
-        }
-
-        return statement;
-    }
+    // value parsers
 
     fn parseIdentifier(self: *Self) ParseError![]const u8 {
         return switch (self.curr_token.?) {
@@ -95,16 +77,37 @@ pub const Parser = struct {
         return int;
     }
 
-    // fn parse_operator(self: *Self) ParseError
+    // statements
+
+    pub fn parseStatement(self: *Self) !ast.Statement {
+        const statement = switch (self.curr_token.?) {
+            .keyword => |kw| switch (kw) {
+                .let => {
+                    self.nextToken();
+                    return ast.Statement{
+                        .let = try self.parseLetStatement(),
+                    };
+                },
+                else => unreachable,
+            },
+            else => unreachable,
+        };
+
+        if (self.curr_token.? != lex.Token.semicolon) {
+            return ParseError.SemicolonExpected;
+        }
+
+        return statement;
+    }
 
     pub fn parseLetStatement(self: *Self) ParseError!ast.LetStatement {
         const ident = try self.parseIdentifier();
 
         if (!self.expectOperator(lex.Operator.assign)) {
             return ParseError.AssignmentExpected;
+        } else {
+            self.nextToken();
         }
-
-        self.nextToken();
 
         return ast.LetStatement{
             .identifier = ident,
@@ -112,19 +115,14 @@ pub const Parser = struct {
         };
     }
 
-    fn parseOperatorExpression(self: *Self, left: ast.Expression) ParseError!ast.OperatorExpression {
-        return ast.OperatorExpression{
-            .left = left,
-            .operator = .{ .operator = .multiply }, // TODO: parse op
-            .right = try self.parseExpression(),
-        };
-    }
+    // expressions
 
     pub fn parseExpression(self: *Self) ParseError!ast.Expression {
         switch (self.curr_token.?) {
             .integer => {
                 const tok = .{ .integer_literal = try self.parseIntegerLiteral() };
-                switch (self.peek_token.?) {
+
+                switch (self.curr_token.?) {
                     .operator => {
                         const expr = try self.parseOperatorExpression(tok);
                         return .{ .operator = &expr };
@@ -134,11 +132,27 @@ pub const Parser = struct {
                 }
             },
             else => {
-                std.debug.print("in parse expression: {any}", .{self.curr_token});
+                std.debug.print("in parse expression else branch: {any}", .{self.curr_token});
                 unreachable;
             },
         }
         return ParseError.InvalidToken;
+    }
+
+    fn parseOperatorExpression(self: *Self, left: ast.Expression) ParseError!ast.OperatorExpression {
+        const op: lex.Operator = switch (self.curr_token.?) {
+            .operator => |val| blk: {
+                self.nextToken();
+                break :blk val;
+            },
+            else => return ParseError.OperatorExpected,
+        };
+
+        return ast.OperatorExpression{
+            .left = left,
+            .operator = .{ .operator = op },
+            .right = try self.parseExpression(),
+        };
     }
 };
 
@@ -154,23 +168,21 @@ test "Parse - basic integer let statement" {
     try assertEq(try parser.parseStatement(), tree);
 }
 
-// test "Parse - expressions" {
-//     const content = "let twohundredfifty = 25;";
-//     const tree = ast.Statement{
-//         .let = .{
-//             .identifier = "twohundredfifty",
-//             .value = .{
-//                 .operator = &ast.OperatorExpression{
-//                     .left = .{ .integer_literal = 25 },
-//                     .operator = .{ .operator = .multiply },
-//                     .right = .{ .integer_literal = 10 },
-//                 },
-//             },
-//         },
-//     };
-//
-//     var parser = Parser.new(content);
-//     parser.nextToken();
-//     std.debug.print("{any}", .{parser});
-//     try std.testing.expectEqualDeep(try parser.parseStatement(), tree);
-// }
+test "Parse - expressions" {
+    const content = "let twohundredfifty = 25 * 10;";
+    const tree = ast.Statement{
+        .let = .{
+            .identifier = "twohundredfifty",
+            .value = .{
+                .operator = &ast.OperatorExpression{
+                    .left = .{ .integer_literal = 25 },
+                    .operator = .{ .operator = .multiply },
+                    .right = .{ .integer_literal = 10 },
+                },
+            },
+        },
+    };
+
+    var parser = Parser.new(content);
+    try std.testing.expectEqualDeep(try parser.parseStatement(), tree);
+}

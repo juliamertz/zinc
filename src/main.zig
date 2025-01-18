@@ -6,14 +6,6 @@ pub fn main() !void {
     var args = std.process.args();
     _ = args.skip();
 
-    // std.debug.print("{any}", .{@typeInfo(lex.Token)});
-
-    // const parse = @import("parser.zig");
-    // var parser = parse.Parser.new("aap = ");
-    // _ = try parser.parse_let_statement();
-    // // std.debug.print("statemtent: {any}", .{thing});
-    std.process.exit(0);
-
     const stdout = std.io.getStdOut().writer();
 
     if (args.next()) |subcommand| {
