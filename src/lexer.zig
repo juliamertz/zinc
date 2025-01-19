@@ -187,11 +187,11 @@ test "Lexer - special charachters" {
     var lex = Lexer.new(input);
 
     const tokens = [_]Token{
-        .{ .operator = .assign },
+        .equal,
         .lparen,
         .lsquirly,
         .rsquirly,
-        .{ .operator = .add },
+        .plus,
         .comma,
         .rparen,
         .semicolon,
@@ -212,7 +212,7 @@ test "Lexer - let statement" {
     const tokens = [_]Token{
         .{ .keyword = .let },
         .{ .ident = "woof" },
-        .{ .operator = .assign },
+        .plus,
         .{ .keyword = .true_token },
         .semicolon,
         .eof,
@@ -232,9 +232,9 @@ test "Lexer - rand" {
     const tokens = [_]Token{
         .{ .keyword = .let },
         .{ .ident = "twohundredfifty" },
-        .{ .operator = .assign },
+        .plus,
         .{ .integer = "25" },
-        .{ .operator = .multiply },
+        .asterisk,
         .{ .integer = "10" },
         .semicolon,
         .eof,

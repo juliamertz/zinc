@@ -39,12 +39,12 @@ pub const Parser = struct {
         self.peek_token = self.lexer.readToken();
     }
 
-    // fn expectOperator(self: *Self, op: lex.Operator) bool {
-    //     return switch (self.curr_token.?) {
-    //         .operator => |val| val == op,
-    //         else => false,
-    //     };
-    // }
+    fn expectOperator(self: *Self, expected: ast.Operator) bool {
+        const operator = self.scanOperator() catch {
+            return false;
+        };
+        return operator == expected;
+    }
 
     // value parsers
 
@@ -70,17 +70,28 @@ pub const Parser = struct {
         return int;
     }
 
-    pub fn parseOperator(self: *Self) ParseError!ast.Operator {
+    // scan for operator in current position but do not advance lexer.
+    fn scanOperator(self: *Self) ParseError!ast.Operator {
         const token = self.curr_token orelse return ParseError.OperatorExpected;
         const operator: ast.Operator = switch (token) {
             .plus => .add,
             .minus => .subtract,
             .asterisk => .multiply,
+            .forward_slash => .divide,
+            .dot => blk: {
+                if (std.meta.eql(self.peek_token.?, .dot)) break :blk .concat;
+                return ParseError.OperatorExpected;
+            },
             else => return ParseError.OperatorExpected,
         };
 
-        self.nextToken();
         return operator;
+    }
+
+    fn parseOperator(self: *Self) ParseError!ast.Operator {
+        const token = try self.scanOperator();
+        self.nextToken();
+        return token;
     }
 
     // statements
@@ -109,7 +120,7 @@ pub const Parser = struct {
     pub fn parseLetStatement(self: *Self) ParseError!ast.LetStatement {
         const ident = try self.parseIdentifier();
 
-        if (!self.expectOperator(lex.Operator.assign)) {
+        if (!self.expectOperator(ast.Operator.add)) {
             return ParseError.AssignmentExpected;
         } else {
             self.nextToken();
@@ -124,38 +135,24 @@ pub const Parser = struct {
     // expressions
 
     pub fn parseExpression(self: *Self) ParseError!ast.Expression {
-        switch (self.curr_token.?) {
-            .integer => {
-                const tok = .{ .integer_literal = try self.parseIntegerLiteral() };
+        const token: ast.Expression = switch (self.curr_token.?) {
+            .integer => .{ .integer_literal = try self.parseIntegerLiteral() },
+            .ident => |ident| blk: {
+                self.nextToken();
+                break :blk .{ .identifier = ident };
+            },
+            else => return ParseError.InvalidToken,
+        };
 
-                switch (self.curr_token.?) {
-                    .operator => {
-                        const expr = try self.parseOperatorExpression(tok);
-                        return .{ .operator = &expr };
-                    },
-                    .integer => return ParseError.InvalidToken,
-                    else => return tok,
-                }
-            },
-            else => {
-                return ParseError.InvalidToken;
-            },
-        }
-        return ParseError.InvalidToken;
+        _ = self.scanOperator() catch return token;
+        const expr = try self.parseOperatorExpression(token);
+        return .{ .operator = &expr };
     }
 
     fn parseOperatorExpression(self: *Self, left: ast.Expression) ParseError!ast.OperatorExpression {
-        const op: lex.Operator = switch (self.curr_token.?) {
-            .operator => |val| blk: {
-                self.nextToken();
-                break :blk val;
-            },
-            else => return ParseError.OperatorExpected,
-        };
-
         return ast.OperatorExpression{
             .left = left,
-            .operator = .{ .operator = op },
+            .operator = try self.parseOperator(),
             .right = try self.parseExpression(),
         };
     }
@@ -181,7 +178,7 @@ test "Parse - expressions" {
             .value = .{
                 .operator = &ast.OperatorExpression{
                     .left = .{ .integer_literal = 25 },
-                    .operator = .{ .operator = .multiply },
+                    .operator = .multiply,
                     .right = .{ .integer_literal = 10 },
                 },
             },
@@ -200,11 +197,11 @@ test "Parse - expressions complex" {
             .value = .{
                 .operator = &ast.OperatorExpression{
                     .left = .{ .integer_literal = 25 },
-                    .operator = .{ .operator = .multiply },
+                    .operator = .multiply,
                     .right = .{
                         .operator = &ast.OperatorExpression{
                             .left = .{ .integer_literal = 10 },
-                            .operator = .{ .operator = .add },
+                            .operator = .add,
                             .right = .{ .integer_literal = 30 },
                         },
                     },

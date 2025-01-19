@@ -6,13 +6,12 @@ pub fn main() !void {
     var args = std.process.args();
     _ = args.skip();
 
-    const parse = @import("./parser.zig");
-    const content = "-";
-    var parser = parse.Parser.new(content);
-    const op = try parser.parseOperator();
-    std.debug.print("op: {any}", .{op});
-
-    std.process.exit(0);
+    // const parse = @import("./parser.zig");
+    // const content = "*";
+    // var parser = parse.Parser.new(content);
+    // const op = try parser.parseOperator();
+    // std.debug.print("op: {any}", .{op});
+    // std.process.exit(0);
 
     const stdout = std.io.getStdOut().writer();
 

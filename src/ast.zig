@@ -2,9 +2,12 @@ const std = @import("std");
 const lex = @import("lexer.zig");
 
 pub const Node = union(enum) {
-    module: Module,
     statement: Statement,
     expression: Expression,
+};
+
+pub const Module = struct {
+    statements: []Statement,
 };
 
 pub const LetStatement = struct {
@@ -20,6 +23,13 @@ pub const Expression = union(enum) {
     // need to use pointer to avoid allocating struct of infinite size
     operator: *const OperatorExpression,
     integer_literal: i64,
+    identifier: []const u8,
+};
+
+pub const OperatorExpression = struct {
+    left: Expression,
+    operator: Operator,
+    right: Expression,
 };
 
 pub const Operator = enum {
@@ -38,14 +48,4 @@ pub const Operator = enum {
 
     // string concatenation with: ..
     concat,
-};
-
-pub const OperatorExpression = struct {
-    left: Expression,
-    operator: Operator,
-    right: Expression,
-};
-
-pub const Module = struct {
-    statements: []Statement,
 };
