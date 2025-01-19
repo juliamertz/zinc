@@ -103,8 +103,10 @@ pub const Lexer = struct {
     }
 
     pub fn advance(self: *Self) void {
-        self.position = self.read_position;
-        self.read_position += 1;
+        if (self.read_position != self.content.len) {
+            self.position = self.read_position;
+            self.read_position += 1;
+        }
     }
 
     pub fn readToken(self: *Self) Token {
@@ -196,6 +198,26 @@ test "Lexer - special charachters" {
         .comma,
         .minus,
         .rparen,
+        .semicolon,
+        .eof,
+    };
+
+    for (tokens) |token| {
+        const tok = lex.readToken();
+        lex.advance();
+        try assertEq(token, tok);
+    }
+}
+
+test "Lexer - whitespace" {
+    const input = "let do_thing=2500;";
+    var lex = Lexer.new(input);
+
+    const tokens = [_]Token{
+        .{ .keyword = .let },
+        .{ .ident = "do_thing" },
+        .equal,
+        .{ .integer = "2500" },
         .semicolon,
         .eof,
     };

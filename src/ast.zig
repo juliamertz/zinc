@@ -15,8 +15,13 @@ pub const LetStatement = struct {
     value: Expression,
 };
 
+pub const ReturnStatement = struct {
+    value: Expression,
+};
+
 pub const Statement = union(enum) {
     let: LetStatement,
+    return_: ReturnStatement,
 };
 
 pub const Expression = union(enum) {

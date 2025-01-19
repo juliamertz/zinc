@@ -52,8 +52,6 @@ pub const Parser = struct {
         return operator == expected;
     }
 
-    // scanners
-
     fn scanOperator(self: *Self) ParseError!ast.Operator {
         const token = self.curr_token orelse return ParseError.OperatorExpected;
         const operator: ast.Operator = switch (token) {
@@ -72,7 +70,16 @@ pub const Parser = struct {
         return operator;
     }
 
-    // parsers
+    pub fn parseModule(self: *Self) ParseError!ast.Module {
+        var module = std.ArrayList(ast.Statement).init(self.alloc.allocator());
+
+        while (!std.meta.eql(self.curr_token, .eof)) {
+            const statement = try self.parseStatement();
+            module.append(statement) catch @panic("unable to allocate");
+        }
+
+        return .{ .statements = module.items };
+    }
 
     fn parseIdentifier(self: *Self) ParseError![]const u8 {
         return switch (self.curr_token.?) {
@@ -102,17 +109,12 @@ pub const Parser = struct {
         return token;
     }
 
-    // statements
-
     pub fn parseStatement(self: *Self) ParseError!ast.Statement {
-        const statement = switch (self.curr_token.?) {
+        std.debug.print("current in ps: {any}\n", .{self.curr_token});
+        const statement: ast.Statement = switch (self.curr_token.?) {
             .keyword => |kw| switch (kw) {
-                .let => blk: {
-                    self.nextToken();
-                    break :blk ast.Statement{
-                        .let = try self.parseLetStatement(),
-                    };
-                },
+                .let => .{ .let = try self.parseLetStatement() },
+                .return_token => .{ .return_ = try self.parseReturnStatement() },
                 else => return ParseError.InvalidToken,
             },
             else => return ParseError.InvalidToken,
@@ -120,12 +122,22 @@ pub const Parser = struct {
 
         if (self.curr_token.? != lex.Token.semicolon) {
             return ParseError.SemicolonExpected;
-        }
+        } else self.nextToken();
 
         return statement;
     }
 
+    pub fn parseReturnStatement(self: *Self) ParseError!ast.ReturnStatement {
+        self.nextToken();
+
+        return ast.ReturnStatement{
+            .value = try self.parseExpression(),
+        };
+    }
+
     pub fn parseLetStatement(self: *Self) ParseError!ast.LetStatement {
+        self.nextToken();
+
         const ident = try self.parseIdentifier();
 
         if (!self.expectOperator(ast.Operator.equal)) {
@@ -140,18 +152,19 @@ pub const Parser = struct {
         };
     }
 
-    // expressions
-
     pub fn parseExpression(self: *Self) ParseError!ast.Expression {
         const token: ast.Expression = switch (self.curr_token.?) {
-            .integer => .{ .integer_literal = try self.parseIntegerLiteral() },
-            .ident => |ident| blk: {
-                self.nextToken();
-                break :blk .{ .identifier = ident };
+            .integer => |val| .{
+                .integer_literal = std.fmt.parseInt(i64, val, 10) catch {
+                    return ParseError.InvalidInteger;
+                },
             },
+            .ident => |ident| .{ .identifier = ident },
+
             else => return ParseError.ExpressionExpected,
         };
 
+        self.nextToken();
         _ = self.scanOperator() catch return token;
 
         return .{
@@ -159,6 +172,7 @@ pub const Parser = struct {
         };
     }
 
+    // TODO: operator precedence
     fn parseOperatorExpression(self: *Self, left: ast.Expression) ParseError!*ast.OperatorExpression {
         const expr = self.alloc.allocator().create(ast.OperatorExpression) catch @panic("unable to allocate");
         expr.* = ast.OperatorExpression{
@@ -168,6 +182,14 @@ pub const Parser = struct {
         };
 
         return expr;
+    }
+
+    fn printDebug(self: *Self, message: []const u8) void {
+        std.debug.print("{s}:\ncurr_token: {any}\npeek_token: {any}\n", .{
+            message,
+            self.curr_token,
+            self.peek_token,
+        });
     }
 };
 
@@ -184,8 +206,31 @@ test "Parse - basic integer let statement" {
     parser.alloc.deinit();
 }
 
+test "Parse - return" {
+    const content = "return 2500 - 10;";
+    var parser = Parser.new(content, std.testing.allocator);
+
+    // FIX: return statement semicolon doesn't get parsed because of lexer advancing twice at start??
+    // this only happens when passing single integer_literal
+    // failing input: const content = "return 2500;";
+    // working input: const content = "return 2500 ;";
+
+    const expr = try parser.alloc.allocator().create(ast.OperatorExpression);
+    expr.* = ast.OperatorExpression{
+        .left = .{ .integer_literal = 2500 },
+        .operator = .subtract,
+        .right = .{ .integer_literal = 10 },
+    };
+    const tree = ast.Statement{
+        .return_ = .{ .value = .{ .operator = expr } },
+    };
+
+    try assertEq(try parser.parseStatement(), tree);
+    parser.alloc.deinit();
+}
+
 test "Parse - operator expressions" {
-    const content = "let name = 25 * 10;";
+    const content = "let name = 25*10;";
     var parser = Parser.new(content, std.testing.allocator);
 
     const expr = try parser.alloc.allocator().create(ast.OperatorExpression);
@@ -209,7 +254,7 @@ test "Parse - operator expressions" {
 }
 
 test "Parse - nested operator expressions" {
-    const content = "let name = 25 * 10 - 50;";
+    const content = "let name = 25 * 10 -50;";
     var parser = Parser.new(content, std.testing.allocator);
 
     const expr_inner = try parser.alloc.allocator().create(ast.OperatorExpression);

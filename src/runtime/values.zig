@@ -1,10 +1,7 @@
 const std = @import("std");
 
-const String = []const u8;
-
-const Number = i64;
-
-const Boolean = enum {
-    truthy,
-    falsy,
+pub const Value = union(enum) {
+    string: []const u8,
+    integer: i64,
+    bool: bool,
 };
