@@ -1,53 +1,68 @@
 {
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-    flake-parts = {
-      url = "github:hercules-ci/flake-parts";
-      inputs.nixpkgs-lib.follows = "nixpkgs";
-    };
+    zig2nix.url = "github:Cloudef/zig2nix";
   };
 
   outputs =
-    { nixpkgs, ... }@inputs:
-    inputs.flake-parts.lib.mkFlake { inherit inputs; } {
-      systems = nixpkgs.lib.systems.flakeExposed;
+    { zig2nix, ... }:
+    let
+      flake-utils = zig2nix.inputs.flake-utils;
+    in
+    (flake-utils.lib.eachDefaultSystem (
+      system:
+      let
+        env = zig2nix.outputs.zig-env.${system} { };
+        system-triple = env.lib.zigTripleFromString system;
 
-      perSystem =
-        { pkgs, ... }:
-        let
-          nativeBuildInputs = with pkgs; [ zig ];
-
-          tests = # sh
+        # zig build run fails for some reason... this works ¯\_(ツ)_/¯
+        scripts = {
+          run = # sh
             ''
-              src=${./src}
-              zig test $src/lexer.zig
-              zig test $src/parser.zig
+              zig build && ./zig-out/bin/mylang "$@"
             '';
-        in
-        {
-          packages.default = pkgs.stdenv.mkDerivation {
-            name = "mylang";
-            src = ./.;
 
-            inherit nativeBuildInputs;
-
-            doCheck = true;
-            checkPhase = tests;
-
-            configurePhase = "export ZIG_GLOBAL_CACHE_DIR=$(mktemp -d)";
-            buildPhase = ''
-              zig build --prefix $out
+          test = # sh
+            ''
+              files=("lexer.zig" "parser.zig")
+              for file in "''${files[@]}"
+              do
+                echo Running tests for $file
+                zig test ./src/$file
+              done
             '';
-          };
-
-          devShells.default = pkgs.mkShell {
-            packages = nativeBuildInputs;
-          };
-
-          apps.test = {
-            type = "app";
-            program = pkgs.writeShellScriptBin "run-tests" tests;
-          };
         };
-    };
+      in
+      with builtins;
+      with env.lib;
+      with env.pkgs.lib;
+      rec {
+        packages.target = genAttrs allTargetTriples (
+          target:
+          env.packageForTarget target ({
+            src = cleanSource ./.;
+            nativeBuildInputs = with env.pkgs; [ ];
+            buildInputs = with env.pkgsForTarget target; [ ];
+            zigPreferMusl = true;
+            zigDisableWrap = true;
+          })
+        );
+
+        packages.default = packages.target.${system-triple}.override {
+          zigPreferMusl = false;
+          zigDisableWrap = false;
+        };
+
+        apps.build = env.app [ ] "zig build \"$@\"";
+        apps.default = env.app [ ] scripts.run;
+        apps.test = env.app [ ] scripts.test;
+
+        # nix develop
+        devShells.default = env.mkShell {
+          nativeBuildInputs = with env.pkgs; [
+            (writeShellScriptBin "run" scripts.run)
+            (writeShellScriptBin "run-tests" scripts.test)
+          ];
+        };
+      }
+    ));
 }

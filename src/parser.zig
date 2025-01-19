@@ -46,13 +46,6 @@ pub const Parser = struct {
         };
     }
 
-    // fn expectToken(expected: anytype) bool {
-    //     switch (@TypeOf(expected)) {
-    //         lex.Operator => expectOperator(expected),
-    //         else => false,
-    //     }
-    // }
-
     // value parsers
 
     fn parseIdentifier(self: *Self) ParseError![]const u8 {
@@ -79,18 +72,18 @@ pub const Parser = struct {
 
     // statements
 
-    pub fn parseStatement(self: *Self) !ast.Statement {
+    pub fn parseStatement(self: *Self) ParseError!ast.Statement {
         const statement = switch (self.curr_token.?) {
             .keyword => |kw| switch (kw) {
-                .let => {
+                .let => blk: {
                     self.nextToken();
-                    return ast.Statement{
+                    break :blk ast.Statement{
                         .let = try self.parseLetStatement(),
                     };
                 },
-                else => unreachable,
+                else => return ParseError.InvalidToken,
             },
-            else => unreachable,
+            else => return ParseError.InvalidToken,
         };
 
         if (self.curr_token.? != lex.Token.semicolon) {
@@ -132,8 +125,7 @@ pub const Parser = struct {
                 }
             },
             else => {
-                std.debug.print("in parse expression else branch: {any}", .{self.curr_token});
-                unreachable;
+                return ParseError.InvalidToken;
             },
         }
         return ParseError.InvalidToken;

@@ -3,11 +3,10 @@
     .version = "0.0.1",
     .minimum_zig_version = "0.13.0",
     .dependencies = .{
-        // for repl qol
-        // .libvaxis = .{
-        //     .url = "https://github.com/rockorager/libvaxis/archive/refs/tags/v0.5.1.tar.gz",
-        //     .hash = "1220de23a3240e503397ea579de4fd85db422f537e10036ef74717c50164475813ce",
-        // },
+        .pretty = .{
+            .url = "https://github.com/timfayz/pretty/archive/refs/heads/0.13-compat.tar.gz",
+            .hash = "1220b7c71488a858f933e68c6b1d1ba7178cb72076e2dcdd3fe87d03b8990a8aa6c1",
+        },
     },
 
     .paths = .{

@@ -198,22 +198,6 @@ pub const Lexer = struct {
     }
 };
 
-// populate list of tokens based on given input string
-pub fn tokenize(buff: *std.ArrayList(Token), content: []const u8) !void {
-    var lexer = Lexer.new(content);
-
-    while (true) {
-        const token = lexer.readToken();
-        try buff.append(token);
-
-        if (token == .eof) {
-            break;
-        } else {
-            lexer.advance();
-        }
-    }
-}
-
 const assertEq = std.testing.expectEqualDeep;
 
 test "Lexer - special charachters" {
