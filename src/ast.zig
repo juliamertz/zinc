@@ -7,7 +7,7 @@ pub const Node = union(enum) {
 };
 
 pub const Module = struct {
-    statements: []Statement,
+    statements: []const Statement,
 };
 
 pub const LetStatement = struct {

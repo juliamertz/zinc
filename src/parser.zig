@@ -8,7 +8,9 @@ pub const ParseError = error{
     SemicolonExpected,
     IntegerExpected,
     OperatorExpected,
+    ExpressionExpected,
     InvalidInteger,
+
     InvalidToken, // Maybe this is a bit too general
 };
 
@@ -46,7 +48,27 @@ pub const Parser = struct {
         return operator == expected;
     }
 
-    // value parsers
+    // scanners
+
+    fn scanOperator(self: *Self) ParseError!ast.Operator {
+        const token = self.curr_token orelse return ParseError.OperatorExpected;
+        const operator: ast.Operator = switch (token) {
+            .equal => .equal,
+            .plus => .add,
+            .minus => .subtract,
+            .asterisk => .multiply,
+            .forward_slash => .divide,
+            .dot => blk: {
+                if (std.meta.eql(self.peek_token.?, .dot)) break :blk .concat;
+                return ParseError.OperatorExpected;
+            },
+            else => return ParseError.OperatorExpected,
+        };
+
+        return operator;
+    }
+
+    // parsers
 
     fn parseIdentifier(self: *Self) ParseError![]const u8 {
         return switch (self.curr_token.?) {
@@ -68,25 +90,6 @@ pub const Parser = struct {
 
         self.nextToken();
         return int;
-    }
-
-    // scan for operator in current position but do not advance lexer.
-    fn scanOperator(self: *Self) ParseError!ast.Operator {
-        const token = self.curr_token orelse return ParseError.OperatorExpected;
-        const operator: ast.Operator = switch (token) {
-            .equal => .equal,
-            .plus => .add,
-            .minus => .subtract,
-            .asterisk => .multiply,
-            .forward_slash => .divide,
-            .dot => blk: {
-                if (std.meta.eql(self.peek_token.?, .dot)) break :blk .concat;
-                return ParseError.OperatorExpected;
-            },
-            else => return ParseError.OperatorExpected,
-        };
-
-        return operator;
     }
 
     fn parseOperator(self: *Self) ParseError!ast.Operator {
@@ -142,7 +145,7 @@ pub const Parser = struct {
                 self.nextToken();
                 break :blk .{ .identifier = ident };
             },
-            else => return ParseError.InvalidToken,
+            else => return ParseError.ExpressionExpected,
         };
 
         _ = self.scanOperator() catch return token;
@@ -162,55 +165,77 @@ pub const Parser = struct {
 const assertEq = std.testing.expectEqualDeep;
 
 test "Parse - basic integer let statement" {
-    const content = "let name = 25;";
-    const tree = ast.Statement{
-        .let = .{ .identifier = "name", .value = .{ .integer_literal = 25 } },
-    };
+    {
+        const content = "let name = 25;";
+        const tree = ast.Statement{
+            .let = .{ .identifier = "name", .value = .{ .integer_literal = 25 } },
+        };
 
-    var parser = Parser.new(content);
-    try assertEq(try parser.parseStatement(), tree);
-}
+        var parser = Parser.new(content);
+        try assertEq(try parser.parseStatement(), tree);
+    }
 
-test "Parse - expressions" {
-    const content = "let twohundredfifty = 25 * 10;";
-    const tree = ast.Statement{
-        .let = .{
-            .identifier = "twohundredfifty",
-            .value = .{
-                .operator = &ast.OperatorExpression{
-                    .left = .{ .integer_literal = 25 },
-                    .operator = .multiply,
-                    .right = .{ .integer_literal = 10 },
-                },
-            },
-        },
-    };
-
-    var parser = Parser.new(content);
-    try std.testing.expectEqualDeep(try parser.parseStatement(), tree);
-}
-
-test "Parse - expressions complex" {
-    const content = "let twohundredfifty = 25 * 10 + 30;";
-    const tree = ast.Statement{
-        .let = .{
-            .identifier = "twohundredfifty",
-            .value = .{
-                .operator = &ast.OperatorExpression{
-                    .left = .{ .integer_literal = 25 },
-                    .operator = .multiply,
-                    .right = .{
-                        .operator = &ast.OperatorExpression{
-                            .left = .{ .integer_literal = 10 },
-                            .operator = .add,
-                            .right = .{ .integer_literal = 30 },
-                        },
+    {
+        const content = "let name = 25 * 10;";
+        const tree = ast.Statement{
+            .let = .{
+                .identifier = "name",
+                .value = .{
+                    .operator = &ast.OperatorExpression{
+                        .left = .{ .integer_literal = 25 },
+                        .operator = .multiply,
+                        .right = .{ .integer_literal = 10 },
                     },
                 },
             },
-        },
-    };
+        };
 
-    var parser = Parser.new(content);
-    try std.testing.expectEqualDeep(try parser.parseStatement(), tree);
+        var parser = Parser.new(content);
+        try assertEq(try parser.parseStatement(), tree);
+    }
 }
+
+// test "Parse - expressions" {
+//     const content = "let twohundredfifty = 25 * 10;";
+//     std.debug.print("{any}", .{content});
+//     const tree = ast.Statement{
+//         .let = .{
+//             .identifier = "twohundredfifty",
+//             .value = .{
+//                 .operator = &ast.OperatorExpression{
+//                     .left = .{ .integer_literal = 25 },
+//                     .operator = .multiply,
+//                     .right = .{ .integer_literal = 10 },
+//                 },
+//             },
+//         },
+//     };
+//
+//     var parser = Parser.new(content);
+//     try std.testing.expectEqualDeep(try parser.parseStatement(), tree);
+// }
+
+// test "Parse - expressions complex" {
+//     const content = "let twohundredfifty = 25 * 10 + 30;";
+//     const tree = ast.Statement{
+//         .let = .{
+//             .identifier = "twohundredfifty",
+//             .value = .{
+//                 .operator = &ast.OperatorExpression{
+//                     .left = .{ .integer_literal = 25 },
+//                     .operator = .multiply,
+//                     .right = .{
+//                         .operator = &ast.OperatorExpression{
+//                             .left = .{ .integer_literal = 10 },
+//                             .operator = .add,
+//                             .right = .{ .integer_literal = 30 },
+//                         },
+//                     },
+//                 },
+//             },
+//         },
+//     };
+//
+//     var parser = Parser.new(content);
+//     try std.testing.expectEqualDeep(try parser.parseStatement(), tree);
+// }

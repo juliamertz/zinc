@@ -1,6 +1,8 @@
 const std = @import("std");
 const lex = @import("lexer.zig");
 const parse = @import("parser.zig");
+const eval = @import("eval.zig");
+const ast = @import("ast.zig");
 const pretty = @import("pretty");
 
 const alloc = std.heap.page_allocator;
@@ -22,16 +24,22 @@ pub fn start() !void {
             const stderr = std.io.getStdErr().writer();
             var parser = parse.Parser.new(stdin);
             const stmnt = parser.parseStatement() catch |err| {
-                try stderr.print(
-                    "current token: {any}\npeek token: {any}\n",
-                    .{ parser.curr_token, parser.peek_token },
+                stderr.print(
+                    "error while parsing input at position {d}: {}\n\n",
+                    .{ parser.lexer.read_position, err },
                 );
-                return err;
+                continue;
             };
             try pretty.print(alloc, stmnt, .{
                 .print_extra_empty_line = true,
                 .ptr_skip_dup_unfold = false,
             });
+
+            const val = [_]ast.Statement{stmnt};
+            const interpreter = eval.Interpreter.new(.{
+                .statements = &val,
+            });
+            std.debug.print("{}", .{interpreter});
         }
     }
 }

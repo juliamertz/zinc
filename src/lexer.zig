@@ -212,7 +212,7 @@ test "Lexer - let statement" {
     const tokens = [_]Token{
         .{ .keyword = .let },
         .{ .ident = "woof" },
-        .plus,
+        .equal,
         .{ .keyword = .true_token },
         .semicolon,
         .eof,
@@ -232,7 +232,7 @@ test "Lexer - rand" {
     const tokens = [_]Token{
         .{ .keyword = .let },
         .{ .ident = "twohundredfifty" },
-        .plus,
+        .equal,
         .{ .integer = "25" },
         .asterisk,
         .{ .integer = "10" },
