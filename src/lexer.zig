@@ -34,37 +34,26 @@ pub const Keyword = enum {
     }
 };
 
-pub const Operator = enum {
-    add,
-    subtract,
-    multiply,
-    divide,
-
-    assign,
-    equal,
-    not_equal,
-    less_or_eq,
-    less_than,
-    greater_than,
-    greater_or_eq,
-
-    concat,
-};
-
 pub const Token = union(enum) {
     ident: []const u8,
     integer: []const u8,
     keyword: Keyword,
-    operator: Operator,
-
     string_literal: []const u8,
-    // raw_string_literal: []const u8,
+
+    plus,
+    minus,
+    equal,
+    asterisk,
+    forward_slash,
+    backward_slash,
 
     dot,
     comma,
     colon,
     semicolon,
 
+    langle,
+    rangle,
     lsquirly,
     rsquirly,
     lbracket,
@@ -122,13 +111,13 @@ pub const Lexer = struct {
         self.skip_whitespace();
 
         return switch (self.current()) {
-            '=' => .{ .operator = .assign },
-            '+' => .{ .operator = .add },
-            '*' => .{ .operator = .multiply },
-            '/' => .{ .operator = .divide },
-            '-' => .{ .operator = .subtract },
-            '>' => .{ .operator = .greater_than },
-            '<' => .{ .operator = .less_than },
+            '=' => .equal,
+            '+' => .plus,
+            '*' => .asterisk,
+            '/' => .forward_slash,
+            '-' => .minus,
+            '<' => .langle,
+            '>' => .rangle,
             '{' => .lsquirly,
             '}' => .rsquirly,
             '[' => .lbracket,
@@ -138,14 +127,7 @@ pub const Lexer = struct {
             ':' => .colon,
             ';' => .semicolon,
             ',' => .comma,
-            '.' => {
-                if (self.lookahead() == '.') {
-                    self.advance();
-                    return .{ .operator = .concat };
-                } else {
-                    return .dot;
-                }
-            },
+            '.' => .dot,
             '\'' => {
                 self.advance();
                 return .{ .string_literal = self.read_until('\'') };

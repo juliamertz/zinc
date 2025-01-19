@@ -39,12 +39,12 @@ pub const Parser = struct {
         self.peek_token = self.lexer.readToken();
     }
 
-    fn expectOperator(self: *Self, op: lex.Operator) bool {
-        return switch (self.curr_token.?) {
-            .operator => |val| val == op,
-            else => false,
-        };
-    }
+    // fn expectOperator(self: *Self, op: lex.Operator) bool {
+    //     return switch (self.curr_token.?) {
+    //         .operator => |val| val == op,
+    //         else => false,
+    //     };
+    // }
 
     // value parsers
 
@@ -68,6 +68,19 @@ pub const Parser = struct {
 
         self.nextToken();
         return int;
+    }
+
+    pub fn parseOperator(self: *Self) ParseError!ast.Operator {
+        const token = self.curr_token orelse return ParseError.OperatorExpected;
+        const operator: ast.Operator = switch (token) {
+            .plus => .add,
+            .minus => .subtract,
+            .asterisk => .multiply,
+            else => return ParseError.OperatorExpected,
+        };
+
+        self.nextToken();
+        return operator;
     }
 
     // statements

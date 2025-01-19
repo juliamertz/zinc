@@ -20,32 +20,29 @@ pub const Expression = union(enum) {
     // need to use pointer to avoid allocating struct of infinite size
     operator: *const OperatorExpression,
     integer_literal: i64,
+};
 
-    pub fn jsonStringify(self: @This(), jws: anytype) !void {
-        try jws.beginObject();
+pub const Operator = enum {
+    add,
+    subtract,
+    multiply,
+    divide,
 
-        switch (self) {
-            .operator => |expr| {
-                try jws.objectField("operator");
-                try jws.write(expr.*);
-            },
-            .integer_literal => |expr| {
-                try jws.objectField("integer_literal");
-                try jws.write(expr);
-            },
-        }
-        // var it = self.map.iterator();
-        // while (it.next()) |kv| {
-        //     try jws.objectField(kv.key_ptr.*);
-        //     try jws.write(kv.value_ptr.*);
-        // }
-        // try jws.endObject();
-    }
+    assign,
+    equal,
+    not_equal,
+    less_or_eq,
+    less_than,
+    greater_than,
+    greater_or_eq,
+
+    // string concatenation with: ..
+    concat,
 };
 
 pub const OperatorExpression = struct {
     left: Expression,
-    operator: lex.Token,
+    operator: Operator,
     right: Expression,
 };
 

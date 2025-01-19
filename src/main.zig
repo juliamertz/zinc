@@ -6,6 +6,14 @@ pub fn main() !void {
     var args = std.process.args();
     _ = args.skip();
 
+    const parse = @import("./parser.zig");
+    const content = "-";
+    var parser = parse.Parser.new(content);
+    const op = try parser.parseOperator();
+    std.debug.print("op: {any}", .{op});
+
+    std.process.exit(0);
+
     const stdout = std.io.getStdOut().writer();
 
     if (args.next()) |subcommand| {
@@ -14,17 +22,17 @@ pub fn main() !void {
         }
         //
         else if (utils.str_cmp(subcommand, "process")) {
-            const alloc = std.heap.page_allocator;
-            const max = std.math.maxInt(usize);
-            const content = try std.fs.cwd().readFileAlloc(alloc, "./spec/var", max);
-            defer alloc.free(content);
-            try stdout.print("content: {s}\n", .{content});
+            // const alloc = std.heap.page_allocator;
+            // const max = std.math.maxInt(usize);
+            // const content = try std.fs.cwd().readFileAlloc(alloc, "./spec/var", max);
+            // defer alloc.free(content);
+            // try stdout.print("content: {s}\n", .{content});
 
-            const parse = @import("./parser.zig");
-            var parser = parse.Parser.new(content);
-
-            const stmnt = try parser.parseStatement();
-            try std.json.stringify(&stmnt, .{ .whitespace = .indent_2 }, std.io.getStdOut().writer());
+            // const parse = @import("./parser.zig");
+            // var parser = parse.Parser.new(content);
+            //
+            // const stmnt = try parser.parseStatement();
+            // try std.json.stringify(&stmnt, .{ .whitespace = .indent_2 }, std.io.getStdOut().writer());
         }
     } else {
         try stdout.print("No subcommand given.\n", .{});
