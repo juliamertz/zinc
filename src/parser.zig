@@ -16,13 +16,16 @@ pub const ParseError = error{
 
 pub const Parser = struct {
     lexer: lex.Lexer,
+    alloc: std.heap.ArenaAllocator,
+
     curr_token: ?lex.Token,
     peek_token: ?lex.Token,
 
     const Self = @This();
 
-    pub fn new(content: []const u8) Self {
+    pub fn new(content: []const u8, alloc: std.mem.Allocator) Self {
         var lexer = lex.Lexer.new(content);
+
         const curr = lexer.readToken();
         lexer.advance();
         const next = lexer.readToken();
@@ -30,13 +33,13 @@ pub const Parser = struct {
 
         return Parser{
             .lexer = lexer,
+            .alloc = std.heap.ArenaAllocator.init(alloc),
             .curr_token = curr,
             .peek_token = next,
         };
     }
 
     pub fn nextToken(self: *Self) void {
-        std.debug.print("pos: {d}, token: {any}\n", .{ self.lexer.position, self.curr_token });
         self.curr_token = self.peek_token;
         self.lexer.advance();
         self.peek_token = self.lexer.readToken();
@@ -52,7 +55,6 @@ pub const Parser = struct {
     // scanners
 
     fn scanOperator(self: *Self) ParseError!ast.Operator {
-        std.debug.print("scanning operator at {d}, token: {any}\n", .{ self.lexer.position, self.curr_token });
         const token = self.curr_token orelse return ParseError.OperatorExpected;
         const operator: ast.Operator = switch (token) {
             .equal => .equal,
@@ -97,7 +99,6 @@ pub const Parser = struct {
     fn parseOperator(self: *Self) ParseError!ast.Operator {
         const token = try self.scanOperator();
         self.nextToken();
-        std.debug.print("found operator {any}\n", .{token});
         return token;
     }
 
@@ -120,10 +121,6 @@ pub const Parser = struct {
         if (self.curr_token.? != lex.Token.semicolon) {
             return ParseError.SemicolonExpected;
         }
-
-        // FIX: somehow operator expression data gets mangled here. wtf
-
-        std.debug.print("parsed statement: {any}\n", .{statement.let});
 
         return statement;
     }
@@ -156,20 +153,20 @@ pub const Parser = struct {
         };
 
         _ = self.scanOperator() catch return token;
-        const expr = try self.parseOperatorExpression(token);
 
-        std.debug.print("parsed expression: {any}\n", .{expr});
-        return .{ .operator = &expr };
+        return .{
+            .operator = try self.parseOperatorExpression(token),
+        };
     }
 
-    fn parseOperatorExpression(self: *Self, left: ast.Expression) ParseError!ast.OperatorExpression {
-        const expr = ast.OperatorExpression{
+    fn parseOperatorExpression(self: *Self, left: ast.Expression) ParseError!*ast.OperatorExpression {
+        const expr = self.alloc.allocator().create(ast.OperatorExpression) catch @panic("unable to allocate");
+        expr.* = ast.OperatorExpression{
             .left = left,
             .operator = try self.parseOperator(),
             .right = try self.parseExpression(),
         };
 
-        std.debug.print("parsed operator expression: {any}\n", .{expr});
         return expr;
     }
 };
@@ -182,77 +179,61 @@ test "Parse - basic integer let statement" {
         .let = .{ .identifier = "name", .value = .{ .integer_literal = 25 } },
     };
 
-    var parser = Parser.new(content);
+    var parser = Parser.new(content, std.testing.allocator);
     try assertEq(try parser.parseStatement(), tree);
+    parser.alloc.deinit();
 }
 
-test "failing" {
-    // const tree = ast.Statement{
-    //     .let = .{
-    //         .identifier = "name",
-    //         .value = .{
-    //             .operator = &ast.OperatorExpression{
-    //                 .left = .{ .integer_literal = 25 },
-    //                 .operator = .multiply,
-    //                 .right = .{ .integer_literal = 10 },
-    //             },
-    //         },
-    //     },
-    // };
-
+test "Parse - operator expressions" {
     const content = "let name = 25 * 10;";
-    var parser = Parser.new(content);
-    // const statement = ;
+    var parser = Parser.new(content, std.testing.allocator);
 
-    switch (try parser.parseStatement()) {
-        .let => |statement| {
-            std.debug.print("\n\n{}\n\n", .{statement});
+    const expr = try parser.alloc.allocator().create(ast.OperatorExpression);
+    expr.* = ast.OperatorExpression{
+        .left = .{ .integer_literal = 25 },
+        .operator = .multiply,
+        .right = .{ .integer_literal = 10 },
+    };
+    const statement = ast.Statement{
+        .let = .{
+            .identifier = "name",
+            .value = .{
+                .operator = expr,
+            },
         },
-    }
-    // try assertEq(try parser.parseStatement(), tree);
+    };
+
+    try assertEq(try parser.parseStatement(), statement);
+
+    parser.alloc.deinit();
 }
 
-// test "Parse - expressions" {
-//     const content = "let twohundredfifty = 25 * 10;";
-//     std.debug.print("{any}", .{content});
-//     const tree = ast.Statement{
-//         .let = .{
-//             .identifier = "twohundredfifty",
-//             .value = .{
-//                 .operator = &ast.OperatorExpression{
-//                     .left = .{ .integer_literal = 25 },
-//                     .operator = .multiply,
-//                     .right = .{ .integer_literal = 10 },
-//                 },
-//             },
-//         },
-//     };
-//
-//     var parser = Parser.new(content);
-//     try std.testing.expectEqualDeep(try parser.parseStatement(), tree);
-// }
+test "Parse - nested operator expressions" {
+    const content = "let name = 25 * 10 - 50;";
+    var parser = Parser.new(content, std.testing.allocator);
 
-// test "Parse - expressions complex" {
-//     const content = "let twohundredfifty = 25 * 10 + 30;";
-//     const tree = ast.Statement{
-//         .let = .{
-//             .identifier = "twohundredfifty",
-//             .value = .{
-//                 .operator = &ast.OperatorExpression{
-//                     .left = .{ .integer_literal = 25 },
-//                     .operator = .multiply,
-//                     .right = .{
-//                         .operator = &ast.OperatorExpression{
-//                             .left = .{ .integer_literal = 10 },
-//                             .operator = .add,
-//                             .right = .{ .integer_literal = 30 },
-//                         },
-//                     },
-//                 },
-//             },
-//         },
-//     };
-//
-//     var parser = Parser.new(content);
-//     try std.testing.expectEqualDeep(try parser.parseStatement(), tree);
-// }
+    const expr_inner = try parser.alloc.allocator().create(ast.OperatorExpression);
+    expr_inner.* = ast.OperatorExpression{
+        .left = .{ .integer_literal = 10 },
+        .operator = .subtract,
+        .right = .{ .integer_literal = 50 },
+    };
+    const expr_outer = try parser.alloc.allocator().create(ast.OperatorExpression);
+    expr_outer.* = ast.OperatorExpression{
+        .left = .{ .integer_literal = 25 },
+        .operator = .multiply,
+        .right = .{ .operator = expr_inner },
+    };
+    const statement = ast.Statement{
+        .let = .{
+            .identifier = "name",
+            .value = .{
+                .operator = expr_outer,
+            },
+        },
+    };
+
+    try assertEq(try parser.parseStatement(), statement);
+
+    parser.alloc.deinit();
+}

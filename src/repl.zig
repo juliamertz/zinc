@@ -23,15 +23,16 @@ pub fn start() !void {
             defer alloc.free(stdin);
 
             const stderr = std.io.getStdErr().writer();
-            var parser = parse.Parser.new(stdin);
-            const stmnt = parser.parseStatement() catch |err| {
+            var parser = parse.Parser.new(stdin, std.heap.page_allocator);
+            const statement = parser.parseStatement() catch |err| {
                 try stderr.print(
                     "error while parsing input at position {d}: {}\n\n",
                     .{ parser.lexer.read_position, err },
                 );
                 continue;
             };
-            try pretty.print(alloc, stmnt, .{
+
+            try pretty.print(alloc, statement, .{
                 .print_extra_empty_line = true,
                 .ptr_skip_dup_unfold = false,
             });

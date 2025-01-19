@@ -21,7 +21,7 @@ pub const Statement = union(enum) {
 
 pub const Expression = union(enum) {
     // need to use pointer to avoid allocating struct of infinite size
-    operator: *const OperatorExpression,
+    operator: *OperatorExpression,
     integer_literal: i64,
     identifier: []const u8,
 };
