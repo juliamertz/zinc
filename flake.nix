@@ -11,7 +11,14 @@
     (flake-utils.lib.eachDefaultSystem (
       system:
       let
-        env = zig2nix.outputs.zig-env.${system} { };
+        # zig 0.13
+        # env = zig2nix.outputs.zig-env.${system} { };
+
+        # zig 0.14
+        env = zig2nix.outputs.zig-env.${system} {
+          zig = zig2nix.outputs.packages.${system}.zig.master.bin;
+        };
+
         system-triple = env.lib.zigTripleFromString system;
 
         # zig build run fails for some reason... this works ¯\_(ツ)_/¯

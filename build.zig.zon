@@ -4,8 +4,8 @@
     .minimum_zig_version = "0.13.0",
     .dependencies = .{
         .pretty = .{
-            .url = "https://github.com/timfayz/pretty/archive/refs/heads/0.13-compat.tar.gz",
-            .hash = "1220b7c71488a858f933e68c6b1d1ba7178cb72076e2dcdd3fe87d03b8990a8aa6c1",
+            .url = "https://github.com/timfayz/pretty/archive/refs/tags/v0.10.4.tar.gz",
+            .hash = "1220db3fa6510f1686587aab46ac92a882d4f5a287a20d7b687f654a7b8ce3a0e8d6",
         },
     },
 
