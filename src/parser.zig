@@ -74,6 +74,7 @@ pub const Parser = struct {
     fn scanOperator(self: *Self) ParseError!ast.Operator {
         const token = self.curr_token orelse return ParseError.OperatorExpected;
         const operator: ast.Operator = switch (token) {
+            .equal => .equal,
             .plus => .add,
             .minus => .subtract,
             .asterisk => .multiply,
@@ -120,7 +121,7 @@ pub const Parser = struct {
     pub fn parseLetStatement(self: *Self) ParseError!ast.LetStatement {
         const ident = try self.parseIdentifier();
 
-        if (!self.expectOperator(ast.Operator.add)) {
+        if (!self.expectOperator(ast.Operator.equal)) {
             return ParseError.AssignmentExpected;
         } else {
             self.nextToken();
