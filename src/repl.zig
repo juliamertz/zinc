@@ -18,7 +18,7 @@ fn read_input(alloc: std.mem.Allocator) !?[]const u8 {
 pub fn run(alloc: std.mem.Allocator, content: []const u8) !void {
     const stderr = std.io.getStdErr().writer();
     var parser = parse.Parser.new(content, alloc);
-    const module = parser.parseModule() catch |err| {
+    const module = parser.parseBlock() catch |err| {
         try stderr.print(
             "error while parsing input at position {d}\ncurrent token: {any}\npeek token: {any}\n\n",
             .{ parser.lexer.read_position, parser.curr_token, parser.peek_token },

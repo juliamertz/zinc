@@ -11,12 +11,17 @@ pub const ParseError = error{
     ExpressionExpected,
     InvalidInteger,
 
+    OpenParenExpected,
+    CloseParenExpected,
+    OpenSquirlyExpected,
+    CloseSquirlyExpected,
+
     InvalidToken, // Maybe this is a bit too general
 };
 
 pub const Parser = struct {
     lexer: lex.Lexer,
-    alloc: std.heap.ArenaAllocator,
+    alloc: std.mem.Allocator,
 
     curr_token: ?lex.Token,
     peek_token: ?lex.Token,
@@ -33,7 +38,7 @@ pub const Parser = struct {
 
         return Parser{
             .lexer = lexer,
-            .alloc = std.heap.ArenaAllocator.init(alloc),
+            .alloc = alloc,
             .curr_token = curr,
             .peek_token = next,
         };
@@ -50,6 +55,26 @@ pub const Parser = struct {
             return false;
         };
         return operator == expected;
+    }
+
+    fn expectToken(self: *Self, expected: lex.Token) !void {
+        if (self.curr_token) |tok| {
+            if (std.meta.eql(tok, expected)) {
+                self.nextToken();
+                return;
+            } else {
+                // TODO: find out if zig has a nicer way of doing this
+                return switch (expected) {
+                    .lparen => ParseError.OpenParenExpected,
+                    .rparen => ParseError.CloseParenExpected,
+                    .lsquirly => ParseError.OpenSquirlyExpected,
+                    .rsquirly => ParseError.CloseSquirlyExpected,
+                    else => ParseError.InvalidToken,
+                };
+            }
+        }
+
+        return ParseError.InvalidToken;
     }
 
     fn scanOperator(self: *Self) ParseError!ast.Operator {
@@ -70,12 +95,15 @@ pub const Parser = struct {
         return operator;
     }
 
-    pub fn parseModule(self: *Self) ParseError!ast.Module {
-        var module = std.ArrayList(ast.Statement).init(self.alloc.allocator());
+    pub fn parseBlock(self: *Self) ParseError!ast.Block {
+        var module = std.ArrayList(ast.Statement).init(self.alloc);
 
         while (!std.meta.eql(self.curr_token, .eof)) {
-            const statement = try self.parseStatement();
-            module.append(statement) catch @panic("unable to allocate");
+            const statement = self.parseStatement() catch |err| {
+                if (std.meta.eql(self.curr_token, .rsquirly)) break;
+                return err;
+            };
+            module.append(statement) catch @panic("unable to append");
         }
 
         return .{ .statements = module.items };
@@ -110,11 +138,11 @@ pub const Parser = struct {
     }
 
     pub fn parseStatement(self: *Self) ParseError!ast.Statement {
-        std.debug.print("current in ps: {any}\n", .{self.curr_token});
         const statement: ast.Statement = switch (self.curr_token.?) {
             .keyword => |kw| switch (kw) {
                 .let => .{ .let = try self.parseLetStatement() },
                 .return_token => .{ .return_ = try self.parseReturnStatement() },
+                .function => .{ .function = try self.parseFunctionStatement() },
                 else => return ParseError.InvalidToken,
             },
             else => return ParseError.InvalidToken,
@@ -125,6 +153,42 @@ pub const Parser = struct {
         } else self.nextToken();
 
         return statement;
+    }
+
+    pub fn parseFunctionArgument(self: *Self) ParseError!ast.FunctionArgument {
+        return ast.FunctionArgument{
+            .identifier = try self.parseIdentifier(),
+        };
+    }
+
+    pub fn parseFunctionStatement(self: *Self) ParseError!ast.FunctionStatement {
+        self.nextToken();
+
+        const ident = try self.parseIdentifier();
+
+        // arguments
+        try self.expectToken(lex.Token.lparen);
+
+        var arguments = std.ArrayList(ast.FunctionArgument).init(self.alloc);
+        while (!std.meta.eql(self.curr_token.?, .rparen)) {
+            const arg = try self.parseFunctionArgument();
+            arguments.append(arg) catch @panic("unable to append");
+        }
+
+        try self.expectToken(lex.Token.rparen);
+
+        // body
+        try self.expectToken(lex.Token.lsquirly);
+
+        const body = try self.parseBlock();
+
+        try self.expectToken(lex.Token.rsquirly);
+
+        return ast.FunctionStatement{
+            .identifier = ident,
+            .arguments = arguments.items,
+            .body = body,
+        };
     }
 
     pub fn parseReturnStatement(self: *Self) ParseError!ast.ReturnStatement {
@@ -174,7 +238,7 @@ pub const Parser = struct {
 
     // TODO: operator precedence
     fn parseOperatorExpression(self: *Self, left: ast.Expression) ParseError!*ast.OperatorExpression {
-        const expr = self.alloc.allocator().create(ast.OperatorExpression) catch @panic("unable to allocate");
+        const expr = self.alloc.create(ast.OperatorExpression) catch @panic("unable to allocate");
         expr.* = ast.OperatorExpression{
             .left = left,
             .operator = try self.parseOperator(),
@@ -215,7 +279,7 @@ test "Parse - return" {
     // failing input: const content = "return 2500;";
     // working input: const content = "return 2500 ;";
 
-    const expr = try parser.alloc.allocator().create(ast.OperatorExpression);
+    const expr = try parser.alloc.create(ast.OperatorExpression);
     expr.* = ast.OperatorExpression{
         .left = .{ .integer_literal = 2500 },
         .operator = .subtract,
@@ -233,7 +297,7 @@ test "Parse - operator expressions" {
     const content = "let name = 25*10;";
     var parser = Parser.new(content, std.testing.allocator);
 
-    const expr = try parser.alloc.allocator().create(ast.OperatorExpression);
+    const expr = try parser.alloc.create(ast.OperatorExpression);
     expr.* = ast.OperatorExpression{
         .left = .{ .integer_literal = 25 },
         .operator = .multiply,
@@ -257,13 +321,13 @@ test "Parse - nested operator expressions" {
     const content = "let name = 25 * 10 -50;";
     var parser = Parser.new(content, std.testing.allocator);
 
-    const expr_inner = try parser.alloc.allocator().create(ast.OperatorExpression);
+    const expr_inner = try parser.alloc.create(ast.OperatorExpression);
     expr_inner.* = ast.OperatorExpression{
         .left = .{ .integer_literal = 10 },
         .operator = .subtract,
         .right = .{ .integer_literal = 50 },
     };
-    const expr_outer = try parser.alloc.allocator().create(ast.OperatorExpression);
+    const expr_outer = try parser.alloc.create(ast.OperatorExpression);
     expr_outer.* = ast.OperatorExpression{
         .left = .{ .integer_literal = 25 },
         .operator = .multiply,

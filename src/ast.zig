@@ -6,7 +6,7 @@ pub const Node = union(enum) {
     expression: Expression,
 };
 
-pub const Module = struct {
+pub const Block = struct {
     statements: []const Statement,
 };
 
@@ -15,20 +15,36 @@ pub const LetStatement = struct {
     value: Expression,
 };
 
+pub const FunctionArgument = struct {
+    identifier: []const u8,
+};
+
+pub const FunctionStatement = struct {
+    identifier: []const u8,
+    arguments: []FunctionArgument,
+    body: Block,
+};
+
+pub const FunctionCall = struct {
+    identifier: []const u8,
+    arguments: []Expression,
+};
+
 pub const ReturnStatement = struct {
     value: Expression,
 };
 
 pub const Statement = union(enum) {
     let: LetStatement,
+    function: FunctionStatement,
     return_: ReturnStatement,
 };
 
 pub const Expression = union(enum) {
-    // need to use pointer to avoid allocating struct of infinite size
     operator: *OperatorExpression,
     integer_literal: i64,
     identifier: []const u8,
+    function_call: *FunctionCall,
 };
 
 pub const OperatorExpression = struct {

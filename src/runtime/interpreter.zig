@@ -6,6 +6,8 @@ const EvalError = error{
     MismatchedTypes,
     NoSuchVariable,
     IllegalOperator,
+    IllegalReturn,
+    NotAFunction,
 };
 
 pub const Scope = struct {
@@ -14,13 +16,13 @@ pub const Scope = struct {
 };
 
 pub const Interpreter = struct {
-    module: ast.Module,
+    module: ast.Block,
     root: Scope,
     alloc: std.mem.Allocator,
 
     const Self = @This();
 
-    pub fn new(alloc: std.mem.Allocator, module: ast.Module) Self {
+    pub fn new(alloc: std.mem.Allocator, module: ast.Block) Self {
         return Self{
             .module = module,
             .alloc = alloc,
@@ -32,20 +34,56 @@ pub const Interpreter = struct {
     }
 
     pub fn evaluate(self: *Self) !void {
-        for (self.module.statements) |s| switch (s) {
-            .return_ => {
-                std.debug.print("retuning", .{});
-            },
-            .let => |statement| {
-                // std.debug.print("assigning {any}\n", .{statement});
-                try self.root.variables.put(
-                    statement.identifier,
-                    try self.evaluateExpression(statement.value),
-                );
-            },
-        };
+        for (self.module.statements) |statement|
+            try self.evaluateStatement(statement, &self.root);
 
         try self.printDebug();
+    }
+
+    fn evaluateStatement(self: *Self, statement: ast.Statement, scope: *Scope) EvalError!void {
+        return switch (statement) {
+            .function => |func| {
+                std.debug.print("functioning {s}\n", .{func.identifier});
+                scope.variables.put(
+                    func.identifier,
+                    .{ .function = func },
+                ) catch @panic("unable to append");
+            },
+            .let => |let| {
+                scope.variables.put(
+                    let.identifier,
+                    try self.evaluateExpression(let.value, scope),
+                ) catch @panic("unable to append");
+            },
+
+            .return_ => EvalError.IllegalReturn,
+        };
+    }
+
+    fn evaluateFunction(self: *Self, func: ast.FunctionStatement, _: []ast.FunctionArgument) !values.Value {
+        for (func.body.statements) |statement| switch (statement) {
+            else => try self.evaluateStatement(statement, &self.root),
+        };
+    }
+
+    fn evaluateExpression(self: *Self, expr: ast.Expression, scope: *Scope) EvalError!values.Value {
+        return switch (expr) {
+            .integer_literal => |val| .{ .integer = val },
+            .operator => |val| try self.evaluateOperatorExpression(val.*, scope),
+            .identifier => |val| {
+                return scope.variables.get(val) orelse EvalError.NoSuchVariable;
+            },
+            else => unreachable,
+            // .function_call => |func| {
+            //     if (scope.variables.get(func.identifier)) |ptr| {
+            //         _ = switch (ptr) {
+            //             .function => |v| v,
+            //             else => return EvalError.NotAFunction,
+            //         };
+            //         // return self.evaluateFunction(thing, [])
+            //     }
+            // },
+        };
     }
 
     pub fn printDebug(self: *Self) !void {
@@ -55,10 +93,6 @@ pub const Interpreter = struct {
         while (variables.next()) |variable| {
             try stdout.print("{s}: {any}\n", .{ variable.key_ptr.*, variable.value_ptr.* });
         }
-
-        // try std.json.stringify(self.root.variables., .{}, stdout);
-        // const pretty = @import("pretty");
-        // try pretty.print(self.alloc, self.root.variables, .{});
     }
 
     fn evaluateIntegerOperatorExpression(op: ast.Operator, left: i64, right: i64) EvalError!i64 {
@@ -72,13 +106,9 @@ pub const Interpreter = struct {
         };
     }
 
-    fn evaluateOperatorExpression(self: *Self, expr: ast.OperatorExpression) EvalError!values.Value {
-        const left = try self.evaluateExpression(expr.left);
-        const right = try self.evaluateExpression(expr.right);
-
-        // if (@TypeOf(left) != @TypeOf(right)) {
-        //     return EvalError.MismatchedTypes;
-        // }
+    fn evaluateOperatorExpression(self: *Self, expr: ast.OperatorExpression, scope: *Scope) EvalError!values.Value {
+        const left = try self.evaluateExpression(expr.left, scope);
+        const right = try self.evaluateExpression(expr.right, scope);
 
         return switch (left) {
             .integer => |l_val| switch (right) {
@@ -88,34 +118,6 @@ pub const Interpreter = struct {
                 else => @panic("todo"),
             },
             else => @panic("todo"),
-        };
-
-        // return switch (expr.left) {
-        //     .integer_literal => |v| blk: {
-        //         const vr = switch (expr.right) {
-        //             .integer_literal => |val| val,
-        //             else => unreachable,
-        //         };
-        //         break :blk .{ .integer = evaluateIntegerOperatorExpression(expr.operator, v, vr) };
-        //     },
-        //     .identifier => |v| blk: {
-        //         const vr = switch (expr.right) {
-        //             .identifier => |val| val,
-        //             else => unreachable,
-        //         };
-        //         break :blk .{ .integer = evaluateIntegerOperatorExpression(expr.operator, v, vr) };
-        //     },
-        //     else => @panic("todo"),
-        // };
-    }
-
-    fn evaluateExpression(self: *Self, expr: ast.Expression) EvalError!values.Value {
-        return switch (expr) {
-            .integer_literal => |val| .{ .integer = val },
-            .operator => |val| try self.evaluateOperatorExpression(val.*),
-            .identifier => |val| {
-                return self.root.variables.get(val) orelse EvalError.NoSuchVariable;
-            },
         };
     }
 };

@@ -14,22 +14,16 @@ pub fn main() !void {
             try repl.start();
         }
         //
-        else if (utils.str_cmp(subcommand, "run")) {
+        else if (utils.str_cmp(subcommand, "eval")) {
             const filepath = args.next() orelse @panic("no filepath given");
+            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer arena.deinit();
 
-            const alloc = std.heap.page_allocator;
             const max = std.math.maxInt(usize);
-            const content = try std.fs.cwd().readFileAlloc(alloc, filepath, max);
-            defer alloc.free(content);
+            const content = try std.fs.cwd().readFileAlloc(arena.allocator(), filepath, max);
             try stdout.print("content:\n\n{s}\n", .{content});
 
-            try repl.run(alloc, content);
-
-            // const parse = @import("./parser.zig");
-            // var parser = parse.Parser.new(content);
-
-            // const stmnt = try parser.parseStatement();
-            // try std.json.stringify(&stmnt, .{ .whitespace = .indent_2 }, std.io.getStdOut().writer());
+            try repl.run(arena.allocator(), content);
         }
     } else {
         try stdout.print("No subcommand given.\n", .{});
