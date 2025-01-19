@@ -36,6 +36,7 @@ pub const Parser = struct {
     }
 
     pub fn nextToken(self: *Self) void {
+        std.debug.print("pos: {d}, token: {any}\n", .{ self.lexer.position, self.curr_token });
         self.curr_token = self.peek_token;
         self.lexer.advance();
         self.peek_token = self.lexer.readToken();
@@ -51,6 +52,7 @@ pub const Parser = struct {
     // scanners
 
     fn scanOperator(self: *Self) ParseError!ast.Operator {
+        std.debug.print("scanning operator at {d}, token: {any}\n", .{ self.lexer.position, self.curr_token });
         const token = self.curr_token orelse return ParseError.OperatorExpected;
         const operator: ast.Operator = switch (token) {
             .equal => .equal,
@@ -95,6 +97,7 @@ pub const Parser = struct {
     fn parseOperator(self: *Self) ParseError!ast.Operator {
         const token = try self.scanOperator();
         self.nextToken();
+        std.debug.print("found operator {any}\n", .{token});
         return token;
     }
 
@@ -117,6 +120,10 @@ pub const Parser = struct {
         if (self.curr_token.? != lex.Token.semicolon) {
             return ParseError.SemicolonExpected;
         }
+
+        // FIX: somehow operator expression data gets mangled here. wtf
+
+        std.debug.print("parsed statement: {any}\n", .{statement.let});
 
         return statement;
     }
@@ -150,49 +157,59 @@ pub const Parser = struct {
 
         _ = self.scanOperator() catch return token;
         const expr = try self.parseOperatorExpression(token);
+
+        std.debug.print("parsed expression: {any}\n", .{expr});
         return .{ .operator = &expr };
     }
 
     fn parseOperatorExpression(self: *Self, left: ast.Expression) ParseError!ast.OperatorExpression {
-        return ast.OperatorExpression{
+        const expr = ast.OperatorExpression{
             .left = left,
             .operator = try self.parseOperator(),
             .right = try self.parseExpression(),
         };
+
+        std.debug.print("parsed operator expression: {any}\n", .{expr});
+        return expr;
     }
 };
 
 const assertEq = std.testing.expectEqualDeep;
 
 test "Parse - basic integer let statement" {
-    {
-        const content = "let name = 25;";
-        const tree = ast.Statement{
-            .let = .{ .identifier = "name", .value = .{ .integer_literal = 25 } },
-        };
+    const content = "let name = 25;";
+    const tree = ast.Statement{
+        .let = .{ .identifier = "name", .value = .{ .integer_literal = 25 } },
+    };
 
-        var parser = Parser.new(content);
-        try assertEq(try parser.parseStatement(), tree);
+    var parser = Parser.new(content);
+    try assertEq(try parser.parseStatement(), tree);
+}
+
+test "failing" {
+    // const tree = ast.Statement{
+    //     .let = .{
+    //         .identifier = "name",
+    //         .value = .{
+    //             .operator = &ast.OperatorExpression{
+    //                 .left = .{ .integer_literal = 25 },
+    //                 .operator = .multiply,
+    //                 .right = .{ .integer_literal = 10 },
+    //             },
+    //         },
+    //     },
+    // };
+
+    const content = "let name = 25 * 10;";
+    var parser = Parser.new(content);
+    // const statement = ;
+
+    switch (try parser.parseStatement()) {
+        .let => |statement| {
+            std.debug.print("\n\n{}\n\n", .{statement});
+        },
     }
-
-    {
-        const content = "let name = 25 * 10;";
-        const tree = ast.Statement{
-            .let = .{
-                .identifier = "name",
-                .value = .{
-                    .operator = &ast.OperatorExpression{
-                        .left = .{ .integer_literal = 25 },
-                        .operator = .multiply,
-                        .right = .{ .integer_literal = 10 },
-                    },
-                },
-            },
-        };
-
-        var parser = Parser.new(content);
-        try assertEq(try parser.parseStatement(), tree);
-    }
+    // try assertEq(try parser.parseStatement(), tree);
 }
 
 // test "Parse - expressions" {

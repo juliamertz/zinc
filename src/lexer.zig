@@ -183,16 +183,18 @@ pub const Lexer = struct {
 const assertEq = std.testing.expectEqualDeep;
 
 test "Lexer - special charachters" {
-    const input = "=({}+,);";
+    const input = "=(*{}+,-);";
     var lex = Lexer.new(input);
 
     const tokens = [_]Token{
         .equal,
         .lparen,
+        .asterisk,
         .lsquirly,
         .rsquirly,
         .plus,
         .comma,
+        .minus,
         .rparen,
         .semicolon,
         .eof,

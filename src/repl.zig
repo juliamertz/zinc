@@ -1,9 +1,10 @@
 const std = @import("std");
+const pretty = @import("pretty");
+
 const lex = @import("lexer.zig");
 const parse = @import("parser.zig");
-const eval = @import("eval.zig");
 const ast = @import("ast.zig");
-const pretty = @import("pretty");
+const interp = @import("runtime/interpreter.zig");
 
 const alloc = std.heap.page_allocator;
 
@@ -24,7 +25,7 @@ pub fn start() !void {
             const stderr = std.io.getStdErr().writer();
             var parser = parse.Parser.new(stdin);
             const stmnt = parser.parseStatement() catch |err| {
-                stderr.print(
+                try stderr.print(
                     "error while parsing input at position {d}: {}\n\n",
                     .{ parser.lexer.read_position, err },
                 );
@@ -35,11 +36,11 @@ pub fn start() !void {
                 .ptr_skip_dup_unfold = false,
             });
 
-            const val = [_]ast.Statement{stmnt};
-            const interpreter = eval.Interpreter.new(.{
-                .statements = &val,
-            });
-            std.debug.print("{}", .{interpreter});
+            // const val = [_]ast.Statement{stmnt};
+            // const interpreter = interp.Interpreter.new(.{
+            //     .statements = &val,
+            // });
+            // std.debug.print("{}", .{interpreter});
         }
     }
 }
