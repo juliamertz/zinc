@@ -124,7 +124,11 @@ pub const Interpreter = struct {
 
         var variables = self.root.variables.iterator();
         while (variables.next()) |variable| {
-            try stdout.print("{s}: {any}\n", .{ variable.key_ptr.*, variable.value_ptr.* });
+            const value: values.Value = variable.value_ptr.*;
+            switch (value) {
+                .string => |str| try stdout.print("identifier: {s}: type: string, value: {s}\n", .{ variable.key_ptr.*, str }),
+                else => try stdout.print("{s}: {any}\n", .{ variable.key_ptr.*, value }),
+            }
         }
     }
 

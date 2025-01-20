@@ -109,7 +109,6 @@ pub const Parser = struct {
                         else => return ParseError.UnexpectedEof,
                     }
                 }
-                std.debug.print("in parsenode: {any}, peek token: {any}\n", .{ self.curr_token, self.peek_token });
                 return .{ .expression = try self.parseExpression() };
             },
         };
@@ -127,6 +126,7 @@ pub const Parser = struct {
                 }
                 return err;
             };
+
             nodes.append(node) catch @panic("unable to append");
         }
 
@@ -173,6 +173,9 @@ pub const Parser = struct {
         };
 
         if (self.curr_token.? != lex.Token.semicolon) {
+            if (self.curr_token.? == lex.Token.eof) {
+                return statement;
+            }
             return ParseError.SemicolonExpected;
         } else self.nextToken();
 
@@ -188,10 +191,8 @@ pub const Parser = struct {
     pub fn parseFunctionCallExpression(self: *Self, ident: []const u8) ParseError!ast.FunctionCall {
         var arguments = std.ArrayList(ast.Expression).init(self.alloc);
 
-        std.debug.print("function name: {s}\n", .{ident});
         self.nextToken();
         try self.expectToken(.lparen);
-        std.debug.print("next after paren: {any}\n", .{self.curr_token});
 
         while (!std.meta.eql(self.curr_token.?, .rparen)) {
             const arg = try self.parseExpression();
@@ -255,10 +256,11 @@ pub const Parser = struct {
             self.nextToken();
         }
 
-        return ast.LetStatement{
+        const res = ast.LetStatement{
             .identifier = ident,
             .value = try self.parseExpression(),
         };
+        return res;
     }
 
     pub fn parseExpression(self: *Self) ParseError!ast.Expression {
@@ -279,16 +281,12 @@ pub const Parser = struct {
                 break :blk .{ .identifier = ident };
             },
             .string_literal => |value| blk: {
-                std.debug.print("parsing string literal: {s}\n", .{value});
                 break :blk .{ .string_literal = value };
             },
 
             .eof => unreachable,
 
-            else => {
-                std.debug.print("not an exprression token: {any}\n", .{self.curr_token});
-                return ParseError.ExpressionExpected;
-            },
+            else => return ParseError.ExpressionExpected,
         };
 
         self.nextToken();
