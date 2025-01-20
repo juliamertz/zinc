@@ -265,14 +265,13 @@ test "Parse - basic integer let statement" {
         .let = .{ .identifier = "name", .value = .{ .integer_literal = 25 } },
     };
 
-    var parser = Parser.new(content, std.testing.allocator);
+    var parser = Parser.new(content, std.heap.page_allocator);
     try assertEq(try parser.parseStatement(), tree);
-    parser.alloc.deinit();
 }
 
 test "Parse - return" {
     const content = "return 2500 - 10;";
-    var parser = Parser.new(content, std.testing.allocator);
+    var parser = Parser.new(content, std.heap.page_allocator);
 
     // FIX: return statement semicolon doesn't get parsed because of lexer advancing twice at start??
     // this only happens when passing single integer_literal
@@ -290,12 +289,11 @@ test "Parse - return" {
     };
 
     try assertEq(try parser.parseStatement(), tree);
-    parser.alloc.deinit();
 }
 
 test "Parse - operator expressions" {
     const content = "let name = 25*10;";
-    var parser = Parser.new(content, std.testing.allocator);
+    var parser = Parser.new(content, std.heap.page_allocator);
 
     const expr = try parser.alloc.create(ast.OperatorExpression);
     expr.* = ast.OperatorExpression{
@@ -313,13 +311,11 @@ test "Parse - operator expressions" {
     };
 
     try assertEq(try parser.parseStatement(), statement);
-
-    parser.alloc.deinit();
 }
 
 test "Parse - nested operator expressions" {
     const content = "let name = 25 * 10 -50;";
-    var parser = Parser.new(content, std.testing.allocator);
+    var parser = Parser.new(content, std.heap.page_allocator);
 
     const expr_inner = try parser.alloc.create(ast.OperatorExpression);
     expr_inner.* = ast.OperatorExpression{
@@ -343,6 +339,4 @@ test "Parse - nested operator expressions" {
     };
 
     try assertEq(try parser.parseStatement(), statement);
-
-    parser.alloc.deinit();
 }
