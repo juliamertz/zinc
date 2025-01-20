@@ -1,5 +1,6 @@
 const std = @import("std");
 const ast = @import("ast.zig");
+const utils = @import("utils.zig");
 const lex = @import("lexer.zig");
 
 pub const ParseError = error{
@@ -16,6 +17,8 @@ pub const ParseError = error{
     OpenSquirlyExpected,
     CloseSquirlyExpected,
 
+    UnexpectedEof,
+    ExpectedEof, // HACK: see if this can be fixed later
     InvalidToken, // Maybe this is a bit too general
 };
 
@@ -95,18 +98,39 @@ pub const Parser = struct {
         return operator;
     }
 
+    pub fn parseNode(self: *Self) ParseError!ast.Node {
+        return .{
+            .statement = self.parseStatement() catch |err| {
+                if (std.meta.eql(self.curr_token, .eof)) {
+                    switch (err) {
+                        // HACK: this is a bit hacky as we just catch this higher up to break out
+                        // might be worth exploring other options later on.
+                        ParseError.SemicolonExpected => return ParseError.ExpectedEof,
+                        else => return ParseError.UnexpectedEof,
+                    }
+                }
+                std.debug.print("in parsenode: {any}, peek token: {any}\n", .{ self.curr_token, self.peek_token });
+                return .{ .expression = try self.parseExpression() };
+            },
+        };
+    }
+
     pub fn parseBlock(self: *Self) ParseError!ast.Block {
-        var module = std.ArrayList(ast.Statement).init(self.alloc);
+        var nodes = std.ArrayList(ast.Node).init(self.alloc);
 
         while (!std.meta.eql(self.curr_token, .eof)) {
-            const statement = self.parseStatement() catch |err| {
+            const node = self.parseNode() catch |err| {
                 if (std.meta.eql(self.curr_token, .rsquirly)) break;
+                switch (err) {
+                    ParseError.ExpectedEof => break,
+                    else => {},
+                }
                 return err;
             };
-            module.append(statement) catch @panic("unable to append");
+            nodes.append(node) catch @panic("unable to append");
         }
 
-        return .{ .statements = module.items };
+        return .{ .nodes = nodes.items };
     }
 
     fn parseIdentifier(self: *Self) ParseError![]const u8 {
@@ -158,6 +182,27 @@ pub const Parser = struct {
     pub fn parseFunctionArgument(self: *Self) ParseError!ast.FunctionArgument {
         return ast.FunctionArgument{
             .identifier = try self.parseIdentifier(),
+        };
+    }
+
+    pub fn parseFunctionCallExpression(self: *Self, ident: []const u8) ParseError!ast.FunctionCall {
+        var arguments = std.ArrayList(ast.Expression).init(self.alloc);
+
+        std.debug.print("function name: {s}\n", .{ident});
+        self.nextToken();
+        try self.expectToken(.lparen);
+        std.debug.print("next after paren: {any}\n", .{self.curr_token});
+
+        while (!std.meta.eql(self.curr_token.?, .rparen)) {
+            const arg = try self.parseExpression();
+            arguments.append(arg) catch @panic("unable to append");
+        }
+
+        try self.expectToken(.rparen);
+
+        return ast.FunctionCall{
+            .arguments = arguments.items,
+            .identifier = ident,
         };
     }
 
@@ -223,9 +268,27 @@ pub const Parser = struct {
                     return ParseError.InvalidInteger;
                 },
             },
-            .ident => |ident| .{ .identifier = ident },
+            .ident => |ident| blk: {
+                if (std.meta.eql(self.peek_token, .lparen)) {
+                    // @panic("function call");
+                    const expr = self.alloc.create(ast.FunctionCall) catch @panic("unable to allocate");
+                    expr.* = try self.parseFunctionCallExpression(ident);
 
-            else => return ParseError.ExpressionExpected,
+                    break :blk .{ .function_call = expr };
+                }
+                break :blk .{ .identifier = ident };
+            },
+            .string_literal => |value| blk: {
+                std.debug.print("parsing string literal: {s}\n", .{value});
+                break :blk .{ .string_literal = value };
+            },
+
+            .eof => unreachable,
+
+            else => {
+                std.debug.print("not an exprression token: {any}\n", .{self.curr_token});
+                return ParseError.ExpressionExpected;
+            },
         };
 
         self.nextToken();
@@ -248,7 +311,18 @@ pub const Parser = struct {
         return expr;
     }
 
-    fn printDebug(self: *Self, message: []const u8) void {
+    pub fn printDebug(self: *Self, message: []const u8) !void {
+        var iter = std.mem.split(u8, self.lexer.content, "\n");
+        var number: u32 = 0;
+        while (iter.next()) |line| {
+            number += 1;
+            if (self.lexer.line == number) {
+                const linenumber = try std.fmt.allocPrint(self.alloc, "{d}: ", .{number});
+                std.debug.print("{s}{s}\n", .{ linenumber, line });
+                const padding = try utils.repeatString(self.alloc, " ", line.len + linenumber.len);
+                std.debug.print("{s}^\n", .{padding});
+            }
+        }
         std.debug.print("{s}:\ncurr_token: {any}\npeek_token: {any}\n", .{
             message,
             self.curr_token,

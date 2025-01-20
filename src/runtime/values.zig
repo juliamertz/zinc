@@ -6,4 +6,5 @@ pub const Value = union(enum) {
     integer: i64,
     bool: bool,
     function: ast.FunctionStatement,
+    null, // TODO: remove this sometime when there is a a type system (soontm)
 };

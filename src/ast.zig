@@ -7,7 +7,7 @@ pub const Node = union(enum) {
 };
 
 pub const Block = struct {
-    statements: []const Statement,
+    nodes: []const Node,
 };
 
 pub const LetStatement = struct {
@@ -45,6 +45,7 @@ pub const Expression = union(enum) {
     integer_literal: i64,
     identifier: []const u8,
     function_call: *FunctionCall,
+    string_literal: []const u8,
 };
 
 pub const OperatorExpression = struct {

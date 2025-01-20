@@ -16,13 +16,15 @@ fn read_input(alloc: std.mem.Allocator) !?[]const u8 {
 }
 
 pub fn run(alloc: std.mem.Allocator, interpreter: *interp.Interpreter, content: []const u8) !void {
-    const stderr = std.io.getStdErr().writer();
+    // const stderr = std.io.getStdErr().writer();
     var parser = parse.Parser.new(content, alloc);
     const module = parser.parseBlock() catch |err| {
-        try stderr.print(
-            "error while parsing input at position {d}\ncurrent token: {any}\npeek token: {any}\n\n",
-            .{ parser.lexer.read_position, parser.curr_token, parser.peek_token },
-        );
+        const msg = try std.fmt.allocPrint(alloc, "error while parsing input at position {d}:\n", .{parser.lexer.position});
+        try parser.printDebug(msg);
+        // try stderr.print(
+        //     "error while parsing input at position {d}\ncurrent token: {any}\npeek token: {any}\n\n",
+        //     .{ parser.lexer.read_position, parser.curr_token, parser.peek_token },
+        // );
         return err;
     };
 

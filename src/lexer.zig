@@ -66,8 +66,9 @@ pub const Token = union(enum) {
 };
 
 pub const Lexer = struct {
-    read_position: usize,
-    position: usize,
+    read_position: usize = 0,
+    position: usize = 0,
+    line: usize = 0, // for pretty debug prints
     content: []const u8,
 
     const Self = @This();
@@ -75,8 +76,6 @@ pub const Lexer = struct {
     pub fn new(content: []const u8) Self {
         return Self{
             .content = content,
-            .position = 0,
-            .read_position = 0,
         };
     }
 
@@ -98,6 +97,7 @@ pub const Lexer = struct {
 
     fn skip_whitespace(self: *Self) void {
         while (utils.is_whitespace(self.current())) {
+            if (self.current() == '\n') self.line += 1;
             self.advance();
         }
     }
@@ -197,6 +197,26 @@ test "Lexer - special charachters" {
         .plus,
         .comma,
         .minus,
+        .rparen,
+        .semicolon,
+        .eof,
+    };
+
+    for (tokens) |token| {
+        const tok = lex.readToken();
+        lex.advance();
+        try assertEq(token, tok);
+    }
+}
+
+test "Lexer - string literal" {
+    const input = "greet(\"hey young world\");";
+    var lex = Lexer.new(input);
+
+    const tokens = [_]Token{
+        .{ .ident = "greet" },
+        .lparen,
+        .{ .string_literal = "hey young world" },
         .rparen,
         .semicolon,
         .eof,
