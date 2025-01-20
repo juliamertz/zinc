@@ -16,15 +16,13 @@ pub const Scope = struct {
 };
 
 pub const Interpreter = struct {
-    module: ast.Block,
     root: Scope,
     alloc: std.mem.Allocator,
 
     const Self = @This();
 
-    pub fn new(alloc: std.mem.Allocator, module: ast.Block) Self {
+    pub fn new(alloc: std.mem.Allocator) Self {
         return Self{
-            .module = module,
             .alloc = alloc,
             .root = Scope{
                 .parent = null,
@@ -33,8 +31,8 @@ pub const Interpreter = struct {
         };
     }
 
-    pub fn evaluate(self: *Self) !void {
-        for (self.module.statements) |statement|
+    pub fn evaluate(self: *Self, module: ast.Block) !void {
+        for (module.statements) |statement|
             try self.evaluateStatement(statement, &self.root);
 
         try self.printDebug();

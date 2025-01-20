@@ -2,6 +2,7 @@ const std = @import("std");
 const utils = @import("utils.zig");
 const lex = @import("lexer.zig");
 const repl = @import("./repl.zig");
+const interp = @import("./runtime/interpreter.zig");
 
 pub fn main() !void {
     var args = std.process.args();
@@ -23,7 +24,11 @@ pub fn main() !void {
             const content = try std.fs.cwd().readFileAlloc(arena.allocator(), filepath, max);
             try stdout.print("content:\n\n{s}\n", .{content});
 
-            try repl.run(arena.allocator(), content);
+            var interpreter = interp.Interpreter.new(arena.allocator());
+            try repl.run(arena.allocator(), &interpreter, content);
+        } else {
+            try stdout.print("Invalid subcommand: {s}\n", .{subcommand});
+            std.process.exit(1);
         }
     } else {
         try stdout.print("No subcommand given.\n", .{});

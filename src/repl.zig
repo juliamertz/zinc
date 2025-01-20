@@ -15,7 +15,7 @@ fn read_input(alloc: std.mem.Allocator) !?[]const u8 {
     return input;
 }
 
-pub fn run(alloc: std.mem.Allocator, content: []const u8) !void {
+pub fn run(alloc: std.mem.Allocator, interpreter: *interp.Interpreter, content: []const u8) !void {
     const stderr = std.io.getStdErr().writer();
     var parser = parse.Parser.new(content, alloc);
     const module = parser.parseBlock() catch |err| {
@@ -33,17 +33,19 @@ pub fn run(alloc: std.mem.Allocator, content: []const u8) !void {
 
     // const module: ast.Module = .{ .statements = &[_]ast.Statement{statement} };
 
-    var interpreter = interp.Interpreter.new(alloc, module);
-    try interpreter.evaluate();
+    try interpreter.evaluate(module);
 }
 
 pub fn start() !void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var interpreter = interp.Interpreter.new(arena.allocator());
+
     while (true) {
-        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer arena.deinit();
+        defer arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
 
         if (try read_input(arena.allocator())) |stdin| {
-            try run(arena.allocator(), stdin);
+            try run(arena.allocator(), &interpreter, stdin);
         }
     }
 }
