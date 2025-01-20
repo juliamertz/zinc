@@ -89,7 +89,11 @@ pub const Parser = struct {
             .asterisk => .multiply,
             .forward_slash => .divide,
             .dot => blk: {
-                if (std.meta.eql(self.peek_token.?, .dot)) break :blk .concat;
+                if (std.meta.eql(self.peek_token.?, .dot)) {
+                    self.nextToken();
+                    self.nextToken();
+                    break :blk .concat;
+                }
                 return ParseError.OperatorExpected;
             },
             else => return ParseError.OperatorExpected,
@@ -260,6 +264,7 @@ pub const Parser = struct {
             .identifier = ident,
             .value = try self.parseExpression(),
         };
+
         return res;
     }
 
@@ -290,6 +295,11 @@ pub const Parser = struct {
         };
 
         self.nextToken();
+        if (self.curr_token.? == .semicolon) {
+            self.nextToken();
+            return token;
+        }
+
         _ = self.scanOperator() catch return token;
 
         return .{
@@ -309,16 +319,18 @@ pub const Parser = struct {
         return expr;
     }
 
-    pub fn printDebug(self: *Self, message: []const u8) !void {
-        var iter = std.mem.split(u8, self.lexer.content, "\n");
-        var number: u32 = 0;
-        while (iter.next()) |line| {
-            number += 1;
-            if (self.lexer.line == number) {
-                const linenumber = try std.fmt.allocPrint(self.alloc, "{d}: ", .{number});
-                std.debug.print("{s}{s}\n", .{ linenumber, line });
-                const padding = try utils.repeatString(self.alloc, " ", line.len + linenumber.len);
-                std.debug.print("{s}^\n", .{padding});
+    pub fn printDebug(self: *Self, message: []const u8, err: bool) !void {
+        if (err) {
+            var iter = std.mem.split(u8, self.lexer.content, "\n");
+            var number: u32 = 0;
+            while (iter.next()) |line| {
+                number += 1;
+                if (self.lexer.line == number) {
+                    const linenumber = try std.fmt.allocPrint(self.alloc, "{d}: ", .{number});
+                    std.debug.print("{s}{s}\n", .{ linenumber, line });
+                    const padding = try utils.repeatString(self.alloc, " ", line.len + linenumber.len - 1);
+                    std.debug.print("{s}^\n", .{padding});
+                }
             }
         }
         std.debug.print("{s}:\ncurr_token: {any}\npeek_token: {any}\n", .{

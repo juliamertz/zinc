@@ -20,7 +20,7 @@ pub fn run(alloc: std.mem.Allocator, interpreter: *interp.Interpreter, content: 
     var parser = parse.Parser.new(content, alloc);
     const module = parser.parseBlock() catch |err| {
         const msg = try std.fmt.allocPrint(alloc, "error while parsing input at position {d}:\n", .{parser.lexer.position});
-        try parser.printDebug(msg);
+        try parser.printDebug(msg, true);
         // try stderr.print(
         //     "error while parsing input at position {d}\ncurrent token: {any}\npeek token: {any}\n\n",
         //     .{ parser.lexer.read_position, parser.curr_token, parser.peek_token },

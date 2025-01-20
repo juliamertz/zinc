@@ -7,3 +7,5 @@ func greet(name) {
   let msg = 10;
   return msg;
 };
+
+let msg = greet("julia");

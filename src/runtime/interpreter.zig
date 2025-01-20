@@ -143,6 +143,20 @@ pub const Interpreter = struct {
         };
     }
 
+    fn evaluateStringOperatorExpression(self: *Self, op: ast.Operator, left: []const u8, right: []const u8) EvalError![]const u8 {
+        return switch (op) {
+            .concat => {
+                var result = self.alloc.alloc(u8, left.len + right.len) catch @panic("unable to allocate");
+                @memcpy(result[0..], left);
+                @memcpy(result[left.len..], right);
+                return result;
+            },
+            // std.mem.join(self.alloc, "", []const []const u8{ left, right }),
+
+            else => EvalError.IllegalOperator,
+        };
+    }
+
     fn evaluateOperatorExpression(self: *Self, expr: ast.OperatorExpression, scope: *Scope) EvalError!values.Value {
         const left = try self.evaluateExpression(expr.left, scope);
         const right = try self.evaluateExpression(expr.right, scope);
@@ -151,6 +165,15 @@ pub const Interpreter = struct {
             .integer => |l_val| switch (right) {
                 .integer => |r_val| .{
                     .integer = try evaluateIntegerOperatorExpression(expr.operator, l_val, r_val),
+                },
+                else => @panic("todo"),
+            },
+            .string => |l_val| switch (right) {
+                .string => |r_val| blk: {
+                    self.printDebug() catch unreachable;
+                    break :blk .{
+                        .string = try self.evaluateStringOperatorExpression(expr.operator, l_val, r_val),
+                    };
                 },
                 else => @panic("todo"),
             },
