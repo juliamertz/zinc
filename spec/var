@@ -1,1 +1,2 @@
-let val = 10;
+let v = 10;
+let other=15;

@@ -15,7 +15,7 @@ pub const Keyword = enum {
     true_token,
     false_token,
 
-    fn from_str(str: []const u8) ?Keyword {
+    pub fn fromStr(str: []const u8) ?Keyword {
         const map = std.StaticStringMap(Keyword).initComptime(.{
             .{ "let", .let },
             .{ "mut", .mut },
@@ -95,8 +95,8 @@ pub const Lexer = struct {
         return self.content[self.read_position + 1];
     }
 
-    fn skip_whitespace(self: *Self) void {
-        while (utils.is_whitespace(self.current())) {
+    fn skipWhitespace(self: *Self) void {
+        while (utils.isWhitespace(self.current())) {
             if (self.current() == '\n') self.line += 1;
             self.advance();
         }
@@ -110,9 +110,8 @@ pub const Lexer = struct {
     }
 
     pub fn readToken(self: *Self) Token {
-        self.skip_whitespace();
-
-        return switch (self.current()) {
+        self.skipWhitespace();
+        const token: Token = switch (self.current()) {
             '=' => .equal,
             '+' => .plus,
             '*' => .asterisk,
@@ -130,30 +129,34 @@ pub const Lexer = struct {
             ';' => .semicolon,
             ',' => .comma,
             '.' => .dot,
-            '\'' => {
+            '\'' => blk: {
                 self.advance();
-                return .{ .string_literal = self.read_until('\'') };
+                break :blk .{ .string_literal = self.readUntil('\'') };
             },
-            '"' => {
+            '"' => blk: {
                 self.advance();
-                return .{ .string_literal = self.read_until('"') };
+                break :blk .{ .string_literal = self.readUntil('"') };
             },
 
-            'a'...'z', 'A'...'Z', '_' => {
-                const ident = self.read_ident();
-                if (Keyword.from_str(ident)) |keyword| {
-                    return .{ .keyword = keyword };
+            'a'...'z', 'A'...'Z', '_' => blk: {
+                const ident = self.readIdent();
+
+                if (Keyword.fromStr(ident)) |keyword| {
+                    break :blk .{ .keyword = keyword };
                 }
-                return .{ .ident = ident };
+                break :blk .{ .ident = ident };
             },
-            '0'...'9' => .{ .integer = self.read_int() },
+
+            '0'...'9' => .{ .integer = self.readInt() },
 
             0 => .eof,
             else => .illegal,
         };
+
+        return token;
     }
 
-    fn read_until(self: *Self, ch: u8) []const u8 {
+    fn readUntil(self: *Self, ch: u8) []const u8 {
         const start = self.read_position;
         while (self.current() != ch) {
             self.advance();
@@ -162,8 +165,7 @@ pub const Lexer = struct {
         return self.content[start..self.read_position];
     }
 
-    // TODO: i don't understand why the offset D:
-    fn read_ident(self: *Self) []const u8 {
+    fn readIdent(self: *Self) []const u8 {
         const start = self.read_position;
         while (utils.is_letter(self.lookahead())) {
             self.advance();
@@ -172,7 +174,7 @@ pub const Lexer = struct {
         return self.content[start .. self.read_position + 1];
     }
 
-    fn read_int(self: *Self) []const u8 {
+    fn readInt(self: *Self) []const u8 {
         const start = self.read_position;
         while (std.ascii.isDigit(self.lookahead())) {
             self.advance();
@@ -182,111 +184,111 @@ pub const Lexer = struct {
     }
 };
 
-const assertEq = std.testing.expectEqualDeep;
+// tests
 
-test "Lexer - special charachters" {
-    const input = "=(*{}+,-);";
+fn expectLexerOutput(input: []const u8, expected: []const Token) !void {
     var lex = Lexer.new(input);
-
-    const tokens = [_]Token{
-        .equal,
-        .lparen,
-        .asterisk,
-        .lsquirly,
-        .rsquirly,
-        .plus,
-        .comma,
-        .minus,
-        .rparen,
-        .semicolon,
-        .eof,
-    };
-
-    for (tokens) |token| {
+    for (expected) |token| {
         const tok = lex.readToken();
         lex.advance();
-        try assertEq(token, tok);
+        try std.testing.expectEqualDeep(token, tok);
     }
+}
+
+test "Lexer - special charachters" {
+    try expectLexerOutput(
+        "=(*{}+,-);",
+        &[_]Token{
+            .equal,
+            .lparen,
+            .asterisk,
+            .lsquirly,
+            .rsquirly,
+            .plus,
+            .comma,
+            .minus,
+            .rparen,
+            .semicolon,
+            .eof,
+        },
+    );
 }
 
 test "Lexer - string literal" {
-    const input = "greet(\"hey young world\");";
-    var lex = Lexer.new(input);
-
-    const tokens = [_]Token{
-        .{ .ident = "greet" },
-        .lparen,
-        .{ .string_literal = "hey young world" },
-        .rparen,
-        .semicolon,
-        .eof,
-    };
-
-    for (tokens) |token| {
-        const tok = lex.readToken();
-        lex.advance();
-        try assertEq(token, tok);
-    }
+    try expectLexerOutput(
+        "greet;",
+        &[_]Token{
+            .{ .ident = "greet" },
+            .semicolon,
+            .eof,
+        },
+    );
 }
 
 test "Lexer - whitespace" {
-    const input = "let do_thing=2500;";
-    var lex = Lexer.new(input);
+    try expectLexerOutput(
+        "let value=10;",
+        &[_]Token{
+            .{ .keyword = .let },
+            .{ .ident = "value" },
+            .equal,
+            .{ .integer = "10" },
+            .semicolon,
+            .eof,
+        },
+    );
 
-    const tokens = [_]Token{
-        .{ .keyword = .let },
-        .{ .ident = "do_thing" },
-        .equal,
-        .{ .integer = "2500" },
-        .semicolon,
-        .eof,
-    };
+    try expectLexerOutput(
+        "let value = 10;",
+        &[_]Token{
+            .{ .keyword = .let },
+            .{ .ident = "value" },
+            .equal,
+            .{ .integer = "10" },
+            .semicolon,
+            .eof,
+        },
+    );
 
-    for (tokens) |token| {
-        const tok = lex.readToken();
-        lex.advance();
-        try assertEq(token, tok);
-    }
+    try expectLexerOutput(
+        "let do_thing=2500;",
+        &[_]Token{
+            .{ .keyword = .let },
+            .{ .ident = "do_thing" },
+            .equal,
+            .{ .integer = "2500" },
+            .semicolon,
+            .eof,
+        },
+    );
 }
 
 test "Lexer - let statement" {
-    const input = "let woof = true;";
-    var lex = Lexer.new(input);
-
-    const tokens = [_]Token{
-        .{ .keyword = .let },
-        .{ .ident = "woof" },
-        .equal,
-        .{ .keyword = .true_token },
-        .semicolon,
-        .eof,
-    };
-
-    for (tokens) |token| {
-        const tok = lex.readToken();
-        lex.advance();
-        try assertEq(token, tok);
-    }
+    try expectLexerOutput(
+        "let woof = true;",
+        &[_]Token{
+            .{ .keyword = .let },
+            .{ .ident = "woof" },
+            .equal,
+            .{ .keyword = .true_token },
+            .semicolon,
+            .eof,
+        },
+    );
 }
 
-test "Lexer - rand" {
-    const input = "let twohundredfifty = 25 * 10;";
-    var lex = Lexer.new(input);
-
-    const tokens = [_]Token{
-        .{ .keyword = .let },
-        .{ .ident = "twohundredfifty" },
-        .equal,
-        .{ .integer = "25" },
-        .asterisk,
-        .{ .integer = "10" },
-        .semicolon,
-        .eof,
-    };
-
-    for (tokens) |token| {
-        const tok = lex.readToken();
-        lex.advance();
-        try assertEq(token, tok);
-    }
+test "Lexer - idk" {
+    try expectLexerOutput(
+        "let twohundredfifty = 25 * 10;",
+        &[_]Token{
+            .{ .keyword = .let },
+            .{ .ident = "twohundredfifty" },
+            .equal,
+            .{ .integer = "25" },
+            .asterisk,
+            .{ .integer = "10" },
+            .semicolon,
+            .eof,
+        },
+    );
 }

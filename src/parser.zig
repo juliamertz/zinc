@@ -103,19 +103,11 @@ pub const Parser = struct {
     }
 
     pub fn parseNode(self: *Self) ParseError!ast.Node {
-        return .{
-            .statement = self.parseStatement() catch |err| {
-                if (std.meta.eql(self.curr_token, .eof)) {
-                    switch (err) {
-                        // HACK: this is a bit hacky as we just catch this higher up to break out
-                        // might be worth exploring other options later on.
-                        ParseError.SemicolonExpected => return ParseError.ExpectedEof,
-                        else => return ParseError.UnexpectedEof,
-                    }
-                }
-                return .{ .expression = try self.parseExpression() };
-            },
-        };
+        if (self.curr_token.? == .keyword) {
+            return .{ .statement = try self.parseStatement() };
+        }
+
+        return .{ .expression = try self.parseExpression() };
     }
 
     pub fn parseBlock(self: *Self) ParseError!ast.Block {
@@ -138,13 +130,15 @@ pub const Parser = struct {
     }
 
     fn parseIdentifier(self: *Self) ParseError![]const u8 {
-        return switch (self.curr_token.?) {
+        const ident: []const u8 = switch (self.curr_token.?) {
             .ident => |val| blk: {
                 self.nextToken();
                 break :blk val;
             },
             else => return ParseError.IdentifierExpected,
         };
+
+        return ident;
     }
 
     fn parseIntegerLiteral(self: *Self) ParseError!i64 {
@@ -251,7 +245,6 @@ pub const Parser = struct {
 
     pub fn parseLetStatement(self: *Self) ParseError!ast.LetStatement {
         self.nextToken();
-
         const ident = try self.parseIdentifier();
 
         if (!self.expectOperator(ast.Operator.equal)) {
@@ -295,8 +288,8 @@ pub const Parser = struct {
         };
 
         self.nextToken();
+
         if (self.curr_token.? == .semicolon) {
-            self.nextToken();
             return token;
         }
 
@@ -319,16 +312,16 @@ pub const Parser = struct {
         return expr;
     }
 
-    pub fn printDebug(self: *Self, message: []const u8, err: bool) !void {
+    pub fn printDebug(self: *Self, message: []const u8, err: bool) void {
         if (err) {
             var iter = std.mem.split(u8, self.lexer.content, "\n");
             var number: u32 = 0;
             while (iter.next()) |line| {
                 number += 1;
                 if (self.lexer.line == number) {
-                    const linenumber = try std.fmt.allocPrint(self.alloc, "{d}: ", .{number});
+                    const linenumber = std.fmt.allocPrint(self.alloc, "{d}: ", .{number}) catch unreachable;
                     std.debug.print("{s}{s}\n", .{ linenumber, line });
-                    const padding = try utils.repeatString(self.alloc, " ", line.len + linenumber.len - 1);
+                    const padding = utils.repeatString(self.alloc, " ", line.len + linenumber.len - 1) catch unreachable;
                     std.debug.print("{s}^\n", .{padding});
                 }
             }
@@ -352,6 +345,16 @@ test "Parse - basic integer let statement" {
     var parser = Parser.new(content, std.heap.page_allocator);
     try assertEq(try parser.parseStatement(), tree);
 }
+
+// test "Parse - basic integer let statement without spaces" {
+//     const content = "let name=25;";
+//     const tree = ast.Statement{
+//         .let = .{ .identifier = "name", .value = .{ .integer_literal = 25 } },
+//     };
+//
+//     var parser = Parser.new(content, std.heap.page_allocator);
+//     try assertEq(try parser.parseStatement(), tree);
+// }
 
 test "Parse - return" {
     const content = "return 2500 - 10;";
