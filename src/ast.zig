@@ -68,6 +68,8 @@ pub const Operator = enum {
     less_than,
     greater_than,
     greater_or_eq,
+    and_operator,
+    or_operator,
 
     // string concatenation with: ..
     concat,

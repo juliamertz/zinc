@@ -18,8 +18,9 @@ pub const ParseError = error{
     CloseSquirlyExpected,
 
     IllegalKeyword,
+    IllegalIdentifier,
+
     UnexpectedEof,
-    ExpectedEof, // HACK: see if this can be fixed later
     InvalidToken, // Maybe this is a bit too general
 };
 
@@ -81,26 +82,6 @@ pub const Parser = struct {
         return ParseError.InvalidToken;
     }
 
-    fn scanOperator(self: *Self) ParseError!ast.Operator {
-        const token = self.curr_token orelse return ParseError.OperatorExpected;
-        const operator: ast.Operator = switch (token) {
-            .equal => .equal,
-            .plus => .add,
-            .minus => .subtract,
-            .asterisk => .multiply,
-            .forward_slash => .divide,
-            .dot => blk: {
-                if (std.meta.eql(self.peek_token.?, .dot)) {
-                    break :blk .concat;
-                }
-                return ParseError.OperatorExpected;
-            },
-            else => return ParseError.OperatorExpected,
-        };
-
-        return operator;
-    }
-
     pub fn parseNode(self: *Self) ParseError!ast.Node {
         if (self.curr_token.? == .keyword) {
             return .{ .statement = try self.parseStatement() };
@@ -115,10 +96,6 @@ pub const Parser = struct {
         while (!std.meta.eql(self.curr_token, .eof)) {
             const node = self.parseNode() catch |err| {
                 if (std.meta.eql(self.curr_token, .rsquirly)) break;
-                switch (err) {
-                    ParseError.ExpectedEof => break,
-                    else => {},
-                }
                 return err;
             };
 
@@ -152,9 +129,35 @@ pub const Parser = struct {
         return int;
     }
 
+    fn scanOperator(self: *Self) ParseError!ast.Operator {
+        const token = self.curr_token orelse return ParseError.OperatorExpected;
+        const operator: ast.Operator = switch (token) {
+            .equal => .equal,
+            .plus => .add,
+            .minus => .subtract,
+            .asterisk => .multiply,
+            .forward_slash => .divide,
+            .dot => blk: {
+                if (std.meta.eql(self.peek_token.?, .dot)) {
+                    break :blk .concat;
+                }
+                return ParseError.OperatorExpected;
+            },
+            .keyword => |val| switch (val) {
+                .and_token => .and_operator,
+                .or_token => .or_operator,
+                else => return ParseError.IllegalIdentifier,
+            },
+            else => return ParseError.OperatorExpected,
+        };
+
+        return operator;
+    }
+
     fn parseOperator(self: *Self) ParseError!ast.Operator {
         const operator = try self.scanOperator();
         switch (operator) {
+            // concat operator .. requires an extra dot token to be skipped
             .concat => self.nextToken(),
             else => {},
         }
@@ -302,9 +305,7 @@ pub const Parser = struct {
             return token;
         }
 
-        const scanned = self.scanOperator() catch return token;
-        std.debug.print("we scanned an operator {any}\n", .{scanned});
-        self.printDebug("after scan", true);
+        _ = self.scanOperator() catch return token;
 
         return .{
             .operator = try self.parseBinaryExpression(token),
@@ -316,8 +317,6 @@ pub const Parser = struct {
     // https://www.youtube.com/watch?v=fIPO4G42wYE&t=6165s
     fn parseBinaryExpression(self: *Self, left: ast.Expression) ParseError!*ast.OperatorExpression {
         const op = try self.parseOperator();
-        std.debug.print("we scanned an operator in the parser {any}\n", .{op});
-        self.printDebug("in parse binary expression", true);
 
         const expr = self.alloc.create(ast.OperatorExpression) catch @panic("unable to allocate");
         expr.* = ast.OperatorExpression{

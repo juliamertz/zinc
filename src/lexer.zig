@@ -8,6 +8,8 @@ pub const Keyword = enum {
     match,
     use,
 
+    and_token,
+    or_token,
     pub_token,
     return_token,
     if_token,
@@ -23,6 +25,8 @@ pub const Keyword = enum {
             .{ "match", .match },
             .{ "use", .use },
 
+            .{ "or", .or_token },
+            .{ "and", .and_token },
             .{ "pub", .pub_token },
             .{ "return", .return_token },
             .{ "if", .if_token },

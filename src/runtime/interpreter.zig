@@ -144,6 +144,15 @@ pub const Interpreter = struct {
         };
     }
 
+    fn evaluateBooleanOperatorExpression(op: ast.Operator, left: bool, right: bool) EvalError!bool {
+        return switch (op) {
+            .and_operator => left and right,
+            .or_operator => left or right,
+
+            else => EvalError.IllegalOperator,
+        };
+    }
+
     fn evaluateStringOperatorExpression(self: *Self, op: ast.Operator, left: []const u8, right: []const u8) EvalError![]const u8 {
         return switch (op) {
             .concat => {
@@ -167,9 +176,14 @@ pub const Interpreter = struct {
                 },
                 else => @panic("todo"),
             },
+            .boolean => |l_val| switch (right) {
+                .boolean => |r_val| .{
+                    .boolean = try evaluateBooleanOperatorExpression(expr.operator, l_val, r_val),
+                },
+                else => @panic("todo"),
+            },
             .string => |l_val| switch (right) {
                 .string => |r_val| blk: {
-                    self.printDebug() catch unreachable;
                     break :blk .{
                         .string = try self.evaluateStringOperatorExpression(expr.operator, l_val, r_val),
                     };
