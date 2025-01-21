@@ -68,6 +68,10 @@
           nativeBuildInputs = with env.pkgs; [
             (writeShellScriptBin "run" scripts.run)
             (writeShellScriptBin "run-tests" scripts.test)
+            (writeShellScriptBin "clean" ''
+              rm -vrf .zig-out
+              rm -vrf ~/.cache/zig
+            '')
           ];
         };
       }

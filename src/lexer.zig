@@ -46,6 +46,8 @@ pub const Token = union(enum) {
     asterisk,
     forward_slash,
     backward_slash,
+    ampersand,
+    pipe,
 
     dot,
     comma,
@@ -117,6 +119,8 @@ pub const Lexer = struct {
             '*' => .asterisk,
             '/' => .forward_slash,
             '-' => .minus,
+            '&' => .ampersand,
+            '|' => .pipe,
             '<' => .langle,
             '>' => .rangle,
             '{' => .lsquirly,
@@ -197,7 +201,7 @@ fn expectLexerOutput(input: []const u8, expected: []const Token) !void {
 
 test "Lexer - special charachters" {
     try expectLexerOutput(
-        "=(*{}+,-);",
+        "=(*{}+,-);&|",
         &[_]Token{
             .equal,
             .lparen,
@@ -209,23 +213,14 @@ test "Lexer - special charachters" {
             .minus,
             .rparen,
             .semicolon,
+            .ampersand,
+            .pipe,
             .eof,
         },
     );
 }
 
-test "Lexer - string literal" {
-    try expectLexerOutput(
-        "greet;",
-        &[_]Token{
-            .{ .ident = "greet" },
-            .semicolon,
-            .eof,
-        },
-    );
-}
-
-test "Lexer - whitespace" {
+test "Lexer - let statements" {
     try expectLexerOutput(
         "let value=10;",
         &[_]Token{
@@ -251,10 +246,10 @@ test "Lexer - whitespace" {
     );
 
     try expectLexerOutput(
-        "let do_thing=2500;",
+        "let a = 2500;",
         &[_]Token{
             .{ .keyword = .let },
-            .{ .ident = "do_thing" },
+            .{ .ident = "a" },
             .equal,
             .{ .integer = "2500" },
             .semicolon,

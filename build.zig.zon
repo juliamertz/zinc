@@ -1,11 +1,11 @@
 .{
     .name = "mylang",
     .version = "0.0.1",
-    .minimum_zig_version = "0.13.0",
+    .minimum_zig_version = "0.14.0",
     .dependencies = .{
         .pretty = .{
-            .url = "https://github.com/timfayz/pretty/archive/refs/tags/v0.10.4.tar.gz",
-            .hash = "1220db3fa6510f1686587aab46ac92a882d4f5a287a20d7b687f654a7b8ce3a0e8d6",
+            .url = "https://github.com/juliamertz/pretty/archive/refs/tags/dev.tar.gz",
+            .hash = "1220d64b4e4e60678c5d3480400151986f9ea574188eb18db003f74d1015c083d9a0",
         },
     },
 

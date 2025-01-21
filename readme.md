@@ -1,8 +1,5 @@
 # My unnamed and unfinished language
 
-## Known bugs
-- The first statement in a file will fail to parse if there is missing whitespace e.g. `let val=10` will fail but `let val = 10` works fine, this is probably caused by the parsers initialization step where it advances twice.
-
 ### A file is a module
 
 Each file should be considered it's own module like zig does it

@@ -46,6 +46,7 @@ pub const Expression = union(enum) {
     identifier: []const u8,
     function_call: *FunctionCall,
     string_literal: []const u8,
+    boolean: bool,
 };
 
 pub const OperatorExpression = struct {

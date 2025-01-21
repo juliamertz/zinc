@@ -17,6 +17,7 @@ pub const ParseError = error{
     OpenSquirlyExpected,
     CloseSquirlyExpected,
 
+    IllegalKeyword,
     UnexpectedEof,
     ExpectedEof, // HACK: see if this can be fixed later
     InvalidToken, // Maybe this is a bit too general
@@ -90,8 +91,6 @@ pub const Parser = struct {
             .forward_slash => .divide,
             .dot => blk: {
                 if (std.meta.eql(self.peek_token.?, .dot)) {
-                    self.nextToken();
-                    self.nextToken();
                     break :blk .concat;
                 }
                 return ParseError.OperatorExpected;
@@ -154,9 +153,13 @@ pub const Parser = struct {
     }
 
     fn parseOperator(self: *Self) ParseError!ast.Operator {
-        const token = try self.scanOperator();
+        const operator = try self.scanOperator();
+        switch (operator) {
+            .concat => self.nextToken(),
+            else => {},
+        }
         self.nextToken();
-        return token;
+        return operator;
     }
 
     pub fn parseStatement(self: *Self) ParseError!ast.Statement {
@@ -268,9 +271,15 @@ pub const Parser = struct {
                     return ParseError.InvalidInteger;
                 },
             },
+
+            .keyword => |val| switch (val) {
+                .true_token => .{ .boolean = true },
+                .false_token => .{ .boolean = false },
+                else => return ParseError.IllegalKeyword,
+            },
+
             .ident => |ident| blk: {
                 if (std.meta.eql(self.peek_token, .lparen)) {
-                    // @panic("function call");
                     const expr = self.alloc.create(ast.FunctionCall) catch @panic("unable to allocate");
                     expr.* = try self.parseFunctionCallExpression(ident);
 
@@ -293,19 +302,27 @@ pub const Parser = struct {
             return token;
         }
 
-        _ = self.scanOperator() catch return token;
+        const scanned = self.scanOperator() catch return token;
+        std.debug.print("we scanned an operator {any}\n", .{scanned});
+        self.printDebug("after scan", true);
 
         return .{
-            .operator = try self.parseOperatorExpression(token),
+            .operator = try self.parseBinaryExpression(token),
         };
     }
 
     // TODO: operator precedence
-    fn parseOperatorExpression(self: *Self, left: ast.Expression) ParseError!*ast.OperatorExpression {
+    // A discussion with Casey Muratori about how easy precedence is...
+    // https://www.youtube.com/watch?v=fIPO4G42wYE&t=6165s
+    fn parseBinaryExpression(self: *Self, left: ast.Expression) ParseError!*ast.OperatorExpression {
+        const op = try self.parseOperator();
+        std.debug.print("we scanned an operator in the parser {any}\n", .{op});
+        self.printDebug("in parse binary expression", true);
+
         const expr = self.alloc.create(ast.OperatorExpression) catch @panic("unable to allocate");
         expr.* = ast.OperatorExpression{
             .left = left,
-            .operator = try self.parseOperator(),
+            .operator = op,
             .right = try self.parseExpression(),
         };
 
@@ -314,7 +331,7 @@ pub const Parser = struct {
 
     pub fn printDebug(self: *Self, message: []const u8, err: bool) void {
         if (err) {
-            var iter = std.mem.split(u8, self.lexer.content, "\n");
+            var iter = std.mem.splitSequence(u8, self.lexer.content, "\n");
             var number: u32 = 0;
             while (iter.next()) |line| {
                 number += 1;
@@ -346,12 +363,13 @@ test "Parse - basic integer let statement" {
     try assertEq(try parser.parseStatement(), tree);
 }
 
+// FIX: parse fails if the first statement doesn't include space before =
+// probably caused by parser initialization step
 // test "Parse - basic integer let statement without spaces" {
 //     const content = "let name=25;";
 //     const tree = ast.Statement{
 //         .let = .{ .identifier = "name", .value = .{ .integer_literal = 25 } },
 //     };
-//
 //     var parser = Parser.new(content, std.heap.page_allocator);
 //     try assertEq(try parser.parseStatement(), tree);
 // }
@@ -360,6 +378,7 @@ test "Parse - return" {
     const content = "return 2500 - 10;";
     var parser = Parser.new(content, std.heap.page_allocator);
 
+    // Probably the same bug as above ^
     // FIX: return statement semicolon doesn't get parsed because of lexer advancing twice at start??
     // this only happens when passing single integer_literal
     // failing input: const content = "return 2500;";

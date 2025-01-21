@@ -75,6 +75,7 @@ pub const Interpreter = struct {
             .identifier => |val| {
                 return scope.variables.get(val) orelse EvalError.NoSuchVariable;
             },
+            .boolean => |val| .{ .boolean = val },
             .string_literal => |val| .{ .string = val },
             .function_call => |func| {
                 if (scope.variables.get(func.identifier)) |ptr| {
@@ -146,12 +147,10 @@ pub const Interpreter = struct {
     fn evaluateStringOperatorExpression(self: *Self, op: ast.Operator, left: []const u8, right: []const u8) EvalError![]const u8 {
         return switch (op) {
             .concat => {
-                var result = self.alloc.alloc(u8, left.len + right.len) catch @panic("unable to allocate");
-                @memcpy(result[0..], left);
-                @memcpy(result[left.len..], right);
+                const buff = [2][]const u8{ left, right };
+                const result = std.mem.join(self.alloc, "", &buff) catch @panic("can't join strings");
                 return result;
             },
-            // std.mem.join(self.alloc, "", []const []const u8{ left, right }),
 
             else => EvalError.IllegalOperator,
         };
