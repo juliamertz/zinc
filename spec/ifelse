@@ -1,0 +1,5 @@
+let num = 100;
+
+if num > 50 {
+  let b = 250 - num;
+}

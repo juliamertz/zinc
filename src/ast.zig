@@ -72,10 +72,10 @@ pub const Operator = enum {
     assign,
     equal,
     not_equal,
-    less_or_eq,
+    less_than_or_eq,
     less_than,
     greater_than,
-    greater_or_eq,
+    greater_than_or_eq,
     and_operator,
     or_operator,
 

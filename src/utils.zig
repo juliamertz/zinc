@@ -21,13 +21,19 @@ pub fn repeatString(allocator: std.mem.Allocator, s: []const u8, n: usize) ![]u8
 
 pub fn printAstNode(alloc: std.mem.Allocator, level: usize, node: ast.Node) ![]u8 {
     var out = std.ArrayList(u8).init(alloc);
+    const writer = out.writer();
+
     try out.appendNTimes(' ', 2 * level);
+
     switch (node) {
-        .expression => |expr| switch (expr) {
-            else => out.append("todo!"),
-        },
         .statement => |expr| switch (expr) {
-            else => out.append("todo!"),
+            .let => |val| try writer.print(".let_statement '{s}': {any}", .{ val.identifier, val.value }),
+            else => try writer.print("todo!", .{}),
+        },
+        .expression => |expr| switch (expr) {
+            else => try writer.print("todo!", .{}),
         },
     }
+
+    return out.toOwnedSlice();
 }

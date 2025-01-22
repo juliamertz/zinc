@@ -32,8 +32,8 @@ pub const Interpreter = struct {
         };
     }
 
-    pub fn evaluate(self: *Self, module: ast.BlockStatement) !void {
-        for (module.nodes) |node|
+    pub fn evaluate(self: *Self, nodes: []ast.Node) !void {
+        for (nodes) |node|
             _ = try self.evaluateNode(node, &self.root);
 
         try self.printDebug();
@@ -53,8 +53,7 @@ pub const Interpreter = struct {
     fn evaluateNode(self: *Self, node: ast.Node, scope: *Scope) EvalError!values.Value {
         switch (node) {
             .statement => |s| {
-                try self.evaluateStatement(s, scope);
-                return values.Value.null;
+                return try self.evaluateStatement(s, scope) orelse values.Value.null;
             },
             .expression => |e| {
                 return try self.evaluateExpression(e, scope);
@@ -62,28 +61,34 @@ pub const Interpreter = struct {
         }
     }
 
-    fn evaluateStatement(self: *Self, statement: ast.Statement, scope: *Scope) EvalError!void {
+    fn evaluateStatement(self: *Self, statement: ast.Statement, scope: *Scope) EvalError!?values.Value {
         return switch (statement) {
             .function => |func| {
                 scope.variables.put(
                     func.identifier,
                     .{ .function = func },
                 ) catch @panic("unable to append");
+
+                return values.Value.null;
             },
             .let => |let| {
                 scope.variables.put(
                     let.identifier,
                     try self.evaluateExpression(let.value, scope),
                 ) catch @panic("unable to append");
+
+                return values.Value.null;
             },
-            .if_else => |cond| {
-                const value = try self.evaluateExpression(cond.condition, scope);
+            .if_else => |stmnt| {
+                const value = try self.evaluateExpression(stmnt.condition, scope);
                 switch (value) {
                     .boolean => |do| {
                         if (do) {}
                     },
                     else => @panic("boolean expected"),
                 }
+
+                return values.Value.null;
             },
             .return_ => EvalError.IllegalReturn,
         };
@@ -128,7 +133,7 @@ pub const Interpreter = struct {
                     switch (statement) {
                         .return_ => |val| return try self.evaluateExpression(val.value, scope),
                         else => {
-                            try self.evaluateStatement(statement, &self.root);
+                            return try self.evaluateStatement(statement, &self.root) orelse values.Value.null;
                         },
                     }
                 },
@@ -154,12 +159,16 @@ pub const Interpreter = struct {
         }
     }
 
-    fn evaluateIntegerOperatorExpression(op: ast.Operator, left: i64, right: i64) EvalError!i64 {
+    fn evaluateIntegerOperatorExpression(op: ast.Operator, left: i64, right: i64) EvalError!values.Value {
         return switch (op) {
-            .add => left + right,
-            .subtract => left - right,
-            .multiply => left * right,
-            .divide => @divTrunc(left, right),
+            .add => .{ .integer = left + right },
+            .subtract => .{ .integer = left - right },
+            .multiply => .{ .integer = left * right },
+            .divide => .{ .integer = @divTrunc(left, right) },
+            .greater_than => .{ .boolean = left > right },
+            .greater_than_or_eq => .{ .boolean = left >= right },
+            .less_than => .{ .boolean = left > right },
+            .less_than_or_eq => .{ .boolean = left <= right },
 
             else => EvalError.IllegalOperator,
         };
@@ -192,9 +201,7 @@ pub const Interpreter = struct {
 
         return switch (left) {
             .integer => |l_val| switch (right) {
-                .integer => |r_val| .{
-                    .integer = try evaluateIntegerOperatorExpression(expr.operator, l_val, r_val),
-                },
+                .integer => |r_val| try evaluateIntegerOperatorExpression(expr.operator, l_val, r_val),
                 else => @panic("todo"),
             },
             .boolean => |l_val| switch (right) {

@@ -3,6 +3,8 @@ const ast = @import("ast.zig");
 const utils = @import("utils.zig");
 const lex = @import("lexer.zig");
 
+const Array = std.ArrayList;
+
 pub const ParseError = error{
     IdentifierExpected,
     AssignmentExpected,
@@ -90,8 +92,8 @@ pub const Parser = struct {
         return .{ .expression = try self.parseExpression() };
     }
 
-    pub fn parseBlock(self: *Self) ParseError!ast.BlockStatement {
-        var nodes = std.ArrayList(ast.Node).init(self.alloc);
+    pub fn parseNodes(self: *Self) ParseError![]ast.Node {
+        var nodes = Array(ast.Node).init(self.alloc);
 
         while (!std.meta.eql(self.curr_token, .eof)) {
             const node = self.parseNode() catch |err| {
@@ -102,7 +104,17 @@ pub const Parser = struct {
             nodes.append(node) catch @panic("unable to append");
         }
 
-        return .{ .nodes = nodes.items };
+        return nodes.toOwnedSlice() catch unreachable;
+    }
+
+    pub fn parseBlock(self: *Self) ParseError!ast.BlockStatement {
+        try self.expectToken(.lsquirly);
+
+        const nodes = try self.parseNodes();
+
+        try self.expectToken(.rsquirly);
+
+        return .{ .nodes = nodes };
     }
 
     fn parseIdentifier(self: *Self) ParseError![]const u8 {
@@ -143,6 +155,18 @@ pub const Parser = struct {
                 }
                 return ParseError.OperatorExpected;
             },
+            .langle => blk: {
+                if (self.peek_token.? == .equal) {
+                    break :blk .less_than_or_eq;
+                }
+                break :blk .less_than;
+            },
+            .rangle => blk: {
+                if (self.peek_token.? == .equal) {
+                    break :blk .greater_than_or_eq;
+                }
+                break :blk .greater_than;
+            },
             .keyword => |val| switch (val) {
                 .and_token => .and_operator,
                 .or_token => .or_operator,
@@ -157,8 +181,8 @@ pub const Parser = struct {
     fn parseOperator(self: *Self) ParseError!ast.Operator {
         const operator = try self.scanOperator();
         switch (operator) {
-            // concat operator .. requires an extra dot token to be skipped
-            .concat => self.nextToken(),
+            // skip extra for operators that span 2 tokens
+            .less_than_or_eq, .greater_than_or_eq, .concat => self.nextToken(),
             else => {},
         }
         self.nextToken();
@@ -171,7 +195,7 @@ pub const Parser = struct {
                 .let => .{ .let = try self.parseLetStatement() },
                 .return_token => .{ .return_ = try self.parseReturnStatement() },
                 .function => .{ .function = try self.parseFunctionStatement() },
-                .if_token => .{ .if_else = try self.parseIfElseExpression() },
+                .if_token => .{ .if_else = try self.parseIfElseStatement() },
                 else => return ParseError.InvalidToken,
             },
             else => return ParseError.InvalidToken,
@@ -193,16 +217,10 @@ pub const Parser = struct {
         };
     }
 
-    pub fn parseIfElseExpression(self: *Self) ParseError!ast.IfStatement {
+    pub fn parseIfElseStatement(self: *Self) ParseError!ast.IfStatement {
         self.nextToken();
-
-        try self.expectToken(.lparen);
         const condition = try self.parseExpression();
-        try self.expectToken(.rparen);
-
-        try self.expectToken(.lsquirly);
         const body = try self.parseBlock();
-        try self.expectToken(.rsquirly);
 
         return ast.IfStatement{
             .condition = condition,
@@ -212,7 +230,7 @@ pub const Parser = struct {
     }
 
     pub fn parseFunctionCallExpression(self: *Self, ident: []const u8) ParseError!ast.FunctionCall {
-        var arguments = std.ArrayList(ast.Expression).init(self.alloc);
+        var arguments = Array(ast.Expression).init(self.alloc);
 
         self.nextToken();
         try self.expectToken(.lparen);
@@ -225,7 +243,7 @@ pub const Parser = struct {
         try self.expectToken(.rparen);
 
         return ast.FunctionCall{
-            .arguments = arguments.items,
+            .arguments = arguments.toOwnedSlice() catch unreachable,
             .identifier = ident,
         };
     }
@@ -237,25 +255,18 @@ pub const Parser = struct {
 
         // arguments
         try self.expectToken(lex.Token.lparen);
-
-        var arguments = std.ArrayList(ast.FunctionArgument).init(self.alloc);
+        var arguments = Array(ast.FunctionArgument).init(self.alloc);
         while (!std.meta.eql(self.curr_token.?, .rparen)) {
             const arg = try self.parseFunctionArgument();
             arguments.append(arg) catch @panic("unable to append");
         }
-
         try self.expectToken(lex.Token.rparen);
-
-        // body
-        try self.expectToken(lex.Token.lsquirly);
 
         const body = try self.parseBlock();
 
-        try self.expectToken(lex.Token.rsquirly);
-
         return ast.FunctionStatement{
             .identifier = ident,
-            .arguments = arguments.items,
+            .arguments = arguments.toOwnedSlice() catch unreachable,
             .body = body,
         };
     }
