@@ -171,6 +171,7 @@ pub const Parser = struct {
                 .let => .{ .let = try self.parseLetStatement() },
                 .return_token => .{ .return_ = try self.parseReturnStatement() },
                 .function => .{ .function = try self.parseFunctionStatement() },
+                .if_token => .{ .if_else = try self.parseIfElseExpression() },
                 else => return ParseError.InvalidToken,
             },
             else => return ParseError.InvalidToken,
@@ -189,6 +190,24 @@ pub const Parser = struct {
     pub fn parseFunctionArgument(self: *Self) ParseError!ast.FunctionArgument {
         return ast.FunctionArgument{
             .identifier = try self.parseIdentifier(),
+        };
+    }
+
+    pub fn parseIfElseExpression(self: *Self) ParseError!ast.IfExpression {
+        self.nextToken();
+
+        try self.expectToken(.lparen);
+        const condition = try self.parseExpression();
+        try self.expectToken(.rparen);
+
+        try self.expectToken(.lsquirly);
+        const body = try self.parseBlock();
+        try self.expectToken(.rsquirly);
+
+        return ast.IfExpression{
+            .condition = condition,
+            .consequence = body,
+            .alternative = null,
         };
     }
 

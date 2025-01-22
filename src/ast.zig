@@ -15,6 +15,12 @@ pub const LetStatement = struct {
     value: Expression,
 };
 
+pub const IfExpression = struct {
+    condition: Expression,
+    consequence: Block,
+    alternative: ?Block,
+};
+
 pub const FunctionArgument = struct {
     identifier: []const u8,
 };
@@ -38,6 +44,7 @@ pub const Statement = union(enum) {
     let: LetStatement,
     function: FunctionStatement,
     return_: ReturnStatement,
+    if_else: IfExpression,
 };
 
 pub const Expression = union(enum) {

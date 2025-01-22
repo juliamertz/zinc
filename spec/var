@@ -1,3 +1,3 @@
-let v = 10;
-let other=15;
-let mybool = false;
+let val = true or false;
+
+

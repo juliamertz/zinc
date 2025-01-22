@@ -34,17 +34,30 @@ pub const Interpreter = struct {
 
     pub fn evaluate(self: *Self, module: ast.Block) !void {
         for (module.nodes) |node|
-            try self.evaluateNode(node, &self.root);
+            _ = try self.evaluateNode(node, &self.root);
 
         try self.printDebug();
     }
 
-    fn evaluateNode(self: *Self, node: ast.Node, scope: *Scope) EvalError!void {
+    fn evaluateBlock(self: *Self, module: ast.Block) EvalError!values.Value {
+        var res: ?values.Value = null;
+        for (module.nodes, 0..) |node, i| {
+            const val = try self.evaluateNode(node, &self.root);
+            if (i == module.nodes.len - 1) {
+                res = val;
+            }
+        }
+        return res;
+    }
+
+    fn evaluateNode(self: *Self, node: ast.Node, scope: *Scope) EvalError!values.Value {
         switch (node) {
-            .statement => |s| try self.evaluateStatement(s, scope),
+            .statement => |s| {
+                try self.evaluateStatement(s, scope);
+                return values.Value.null;
+            },
             .expression => |e| {
-                // values from top-level expressions can be discarded
-                _ = try self.evaluateExpression(e, scope);
+                return try self.evaluateExpression(e, scope);
             },
         }
     }
@@ -63,7 +76,17 @@ pub const Interpreter = struct {
                     try self.evaluateExpression(let.value, scope),
                 ) catch @panic("unable to append");
             },
-
+            .if_else => |cond| {
+                const value = try self.evaluateExpression(cond.condition, scope);
+                switch (value) {
+                    .boolean => |do| {
+                        if (do) {}
+                    },
+                    else => @panic("boolean expected"),
+                }
+                // std.debug.print("if else found\n", .{});
+                // @panic("ifelse");
+            },
             .return_ => EvalError.IllegalReturn,
         };
     }

@@ -28,8 +28,6 @@ pub fn run(alloc: std.mem.Allocator, interpreter: *interp.Interpreter, content: 
         .ptr_skip_dup_unfold = false,
     });
 
-    // const module: ast.Module = .{ .statements = &[_]ast.Statement{statement} };
-
     try interpreter.evaluate(module);
 }
 

@@ -122,7 +122,17 @@ pub const Lexer = struct {
             '+' => .plus,
             '*' => .asterisk,
             '/' => .forward_slash,
-            '-' => .minus,
+            '-' => blk: {
+                // skip comments
+                if (self.lookahead() == '-') {
+                    while (self.current() != '\n') {
+                        std.debug.print("skipping {c}\n", .{self.current()});
+                        self.advance();
+                    }
+                    self.skipWhitespace();
+                    break :blk self.readToken();
+                } else break :blk .minus;
+            },
             '&' => .ampersand,
             '|' => .pipe,
             '<' => .langle,
