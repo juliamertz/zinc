@@ -6,7 +6,7 @@ pub const Node = union(enum) {
     expression: Expression,
 };
 
-pub const Block = struct {
+pub const BlockStatement = struct {
     nodes: []const Node,
 };
 
@@ -15,10 +15,10 @@ pub const LetStatement = struct {
     value: Expression,
 };
 
-pub const IfExpression = struct {
+pub const IfStatement = struct {
     condition: Expression,
-    consequence: Block,
-    alternative: ?Block,
+    consequence: BlockStatement,
+    alternative: ?BlockStatement,
 };
 
 pub const FunctionArgument = struct {
@@ -28,7 +28,7 @@ pub const FunctionArgument = struct {
 pub const FunctionStatement = struct {
     identifier: []const u8,
     arguments: []FunctionArgument,
-    body: Block,
+    body: BlockStatement,
 };
 
 pub const FunctionCall = struct {
@@ -44,7 +44,8 @@ pub const Statement = union(enum) {
     let: LetStatement,
     function: FunctionStatement,
     return_: ReturnStatement,
-    if_else: IfExpression,
+    if_else: IfStatement,
+    // block: BlockStatement,
 };
 
 pub const Expression = union(enum) {

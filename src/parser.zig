@@ -90,7 +90,7 @@ pub const Parser = struct {
         return .{ .expression = try self.parseExpression() };
     }
 
-    pub fn parseBlock(self: *Self) ParseError!ast.Block {
+    pub fn parseBlock(self: *Self) ParseError!ast.BlockStatement {
         var nodes = std.ArrayList(ast.Node).init(self.alloc);
 
         while (!std.meta.eql(self.curr_token, .eof)) {
@@ -193,7 +193,7 @@ pub const Parser = struct {
         };
     }
 
-    pub fn parseIfElseExpression(self: *Self) ParseError!ast.IfExpression {
+    pub fn parseIfElseExpression(self: *Self) ParseError!ast.IfStatement {
         self.nextToken();
 
         try self.expectToken(.lparen);
@@ -204,7 +204,7 @@ pub const Parser = struct {
         const body = try self.parseBlock();
         try self.expectToken(.rsquirly);
 
-        return ast.IfExpression{
+        return ast.IfStatement{
             .condition = condition,
             .consequence = body,
             .alternative = null,

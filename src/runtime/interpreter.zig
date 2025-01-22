@@ -32,14 +32,14 @@ pub const Interpreter = struct {
         };
     }
 
-    pub fn evaluate(self: *Self, module: ast.Block) !void {
+    pub fn evaluate(self: *Self, module: ast.BlockStatement) !void {
         for (module.nodes) |node|
             _ = try self.evaluateNode(node, &self.root);
 
         try self.printDebug();
     }
 
-    fn evaluateBlock(self: *Self, module: ast.Block) EvalError!values.Value {
+    fn evaluateBlock(self: *Self, module: ast.BlockStatement) EvalError!values.Value {
         var res: ?values.Value = null;
         for (module.nodes, 0..) |node, i| {
             const val = try self.evaluateNode(node, &self.root);
