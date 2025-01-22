@@ -24,11 +24,7 @@ pub fn run(alloc: std.mem.Allocator, interpreter: *interp.Interpreter, content: 
         return err;
     };
 
-    // var result = std.ArrayList(u8).init(alloc);
-    const file = try std.fs.cwd().createFile("expected-output", .{});
-    defer file.close();
-
-    try pretty.printWriter(alloc, file.writer(), nodes, .{
+    try pretty.printWriter(alloc, std.io.getStdErr().writer(), nodes, .{
         .print_extra_empty_line = true,
         .ptr_skip_dup_unfold = false,
         .show_type_names = false,

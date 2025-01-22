@@ -40,14 +40,13 @@ pub const Parser = struct {
 
         const curr = lexer.readToken();
         lexer.advance();
-        // const next = lexer.readToken();
-        // lexer.advance();
+        const next = lexer.readToken();
 
         return Parser{
             .lexer = lexer,
             .alloc = alloc,
             .curr_token = curr,
-            .peek_token = null,
+            .peek_token = next,
         };
     }
 
@@ -419,16 +418,15 @@ test "Parse - basic integer let statement" {
     );
 }
 
-// FIX: parse fails if the first statement doesn't include space before =
-// probably caused by parser initialization step
-// test "Parse - basic integer let statement without spaces" {
-//     const content = "let name=25;";
-//     const tree = ast.Statement{
-//         .let = .{ .identifier = "name", .value = .{ .integer_literal = 25 } },
-//     };
-//     var parser = Parser.new(content, std.heap.page_allocator);
-//     try assertEq(try parser.parseStatement(), tree);
-// }
+test "Parse - whitespace variations" {
+    try expectEqualAst("let name=25;",
+        \\.statement:
+        \\  .let:
+        \\    .identifier: "name"
+        \\    .value:
+        \\      .integer_literal: 25
+    );
+}
 
 test "Parse - return" {
     try expectEqualAst("return 2500 - 10;",
@@ -442,25 +440,13 @@ test "Parse - return" {
         \\        .right:
         \\          .integer_literal: 10
     );
-    // var parser = Parser.new(content, std.heap.page_allocator);
-    //
-    // // Probably the same bug as above ^
-    // // FIX: return statement semicolon doesn't get parsed because of lexer advancing twice at start??
-    // // this only happens when passing single integer_literal
-    // // failing input: const content = "return 2500;";
-    // // working input: const content = "return 2500 ;";
-    //
-    // const expr = try parser.alloc.create(ast.OperatorExpression);
-    // expr.* = ast.OperatorExpression{
-    //     .left = .{ .integer_literal = 2500 },
-    //     .operator = .subtract,
-    //     .right = .{ .integer_literal = 10 },
-    // };
-    // const tree = ast.Statement{
-    //     .return_ = .{ .value = .{ .operator = expr } },
-    // };
-    //
-    // try assertEq(try parser.parseStatement(), tree);
+
+    try expectEqualAst("return 2500;",
+        \\.statement:
+        \\  .return_:
+        \\    .value:
+        \\      .integer_literal: 2500
+    );
 }
 
 test "Parse - operator expressions" {
