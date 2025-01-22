@@ -1,17 +1,9 @@
 let a = 100;
-let b = 250;
-let c = a * b;
-let d = c / 50 + 40;
 
+-- greet the user
 func greet(name) {
-  -- this is so cool! 
   let msg = "hello there " .. name;
-
-  if (true) {
-    let poop = "kak";
-  };
-
   return msg;
 };
 
-let returned_message = greet("julia");
+let message = greet("julia");

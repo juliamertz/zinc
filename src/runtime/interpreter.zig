@@ -84,8 +84,6 @@ pub const Interpreter = struct {
                     },
                     else => @panic("boolean expected"),
                 }
-                // std.debug.print("if else found\n", .{});
-                // @panic("ifelse");
             },
             .return_ => EvalError.IllegalReturn,
         };

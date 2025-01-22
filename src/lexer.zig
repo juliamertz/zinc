@@ -125,13 +125,12 @@ pub const Lexer = struct {
             '-' => blk: {
                 // skip comments
                 if (self.lookahead() == '-') {
-                    while (self.current() != '\n') {
-                        std.debug.print("skipping {c}\n", .{self.current()});
-                        self.advance();
-                    }
+                    while (self.current() != '\n') self.advance();
                     self.skipWhitespace();
                     break :blk self.readToken();
-                } else break :blk .minus;
+                } else {
+                    break :blk .minus;
+                }
             },
             '&' => .ampersand,
             '|' => .pipe,
@@ -185,7 +184,7 @@ pub const Lexer = struct {
 
     fn readIdent(self: *Self) []const u8 {
         const start = self.read_position;
-        while (utils.is_letter(self.lookahead())) {
+        while (utils.isLetter(self.lookahead())) {
             self.advance();
         }
 

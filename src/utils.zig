@@ -1,10 +1,6 @@
 const std = @import("std");
 
-pub fn str_cmp(a: []const u8, b: []const u8) bool {
-    return std.mem.eql(u8, a, b);
-}
-
-pub fn is_letter(ch: u8) bool {
+pub fn isLetter(ch: u8) bool {
     return std.ascii.isAlphabetic(ch) or ch == '_';
 }
 
