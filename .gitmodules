@@ -1,0 +1,3 @@
+[submodule "src/pretty"]
+	path = src/pretty
+	url = https://github.com/juliamertz/pretty

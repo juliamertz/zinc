@@ -1,5 +1,5 @@
 const std = @import("std");
-const pretty = @import("pretty");
+const pretty = @import("./pretty/src/pretty.zig");
 const utils = @import("utils.zig");
 
 const lex = @import("lexer.zig");
@@ -24,12 +24,14 @@ pub fn run(alloc: std.mem.Allocator, interpreter: *interp.Interpreter, content: 
         return err;
     };
 
-    // const tree_debug_print = try utils.printAstNode(alloc, 0, nodes[0]);
-    // std.debug.print("{s}\n", .{tree_debug_print});
+    // var result = std.ArrayList(u8).init(alloc);
+    const file = try std.fs.cwd().createFile("expected-output", .{});
+    defer file.close();
 
-    try pretty.print(alloc, nodes, .{
+    try pretty.printWriter(alloc, file.writer(), nodes, .{
         .print_extra_empty_line = true,
         .ptr_skip_dup_unfold = false,
+        .show_type_names = false,
     });
 
     try interpreter.evaluate(nodes);

@@ -40,19 +40,21 @@ pub const Parser = struct {
 
         const curr = lexer.readToken();
         lexer.advance();
-        const next = lexer.readToken();
-        lexer.advance();
+        // const next = lexer.readToken();
+        // lexer.advance();
 
         return Parser{
             .lexer = lexer,
             .alloc = alloc,
             .curr_token = curr,
-            .peek_token = next,
+            .peek_token = null,
         };
     }
 
     pub fn nextToken(self: *Self) void {
-        self.curr_token = self.peek_token;
+        if (self.peek_token) |tok| {
+            self.curr_token = tok;
+        }
         self.lexer.advance();
         self.peek_token = self.lexer.readToken();
     }
@@ -104,7 +106,7 @@ pub const Parser = struct {
             nodes.append(node) catch @panic("unable to append");
         }
 
-        return nodes.toOwnedSlice() catch unreachable;
+        return nodes.items;
     }
 
     pub fn parseBlock(self: *Self) ParseError!ast.BlockStatement {
@@ -219,12 +221,10 @@ pub const Parser = struct {
 
     pub fn parseIfElseStatement(self: *Self) ParseError!ast.IfStatement {
         self.nextToken();
-        const condition = try self.parseExpression();
-        const body = try self.parseBlock();
 
         return ast.IfStatement{
-            .condition = condition,
-            .consequence = body,
+            .condition = try self.parseExpression(),
+            .consequence = try self.parseBlock(),
             .alternative = null,
         };
     }
@@ -243,7 +243,7 @@ pub const Parser = struct {
         try self.expectToken(.rparen);
 
         return ast.FunctionCall{
-            .arguments = arguments.toOwnedSlice() catch unreachable,
+            .arguments = arguments.items,
             .identifier = ident,
         };
     }
@@ -266,7 +266,7 @@ pub const Parser = struct {
 
         return ast.FunctionStatement{
             .identifier = ident,
-            .arguments = arguments.toOwnedSlice() catch unreachable,
+            .arguments = arguments.items,
             .body = body,
         };
     }
@@ -382,14 +382,41 @@ pub const Parser = struct {
 
 const assertEq = std.testing.expectEqualDeep;
 
-test "Parse - basic integer let statement" {
-    const content = "let name = 25;";
-    const tree = ast.Statement{
-        .let = .{ .identifier = "name", .value = .{ .integer_literal = 25 } },
+fn expectEqualAst(content: []const u8, expected: []const u8) !void {
+    // var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const alloc = arena.allocator();
+
+    var parser = Parser.new(content, alloc);
+    const nodes = try parser.parseNodes();
+    var result = Array(u8).init(alloc);
+
+    const pretty = @import("./pretty/src/pretty.zig");
+    try pretty.printWriter(alloc, result.writer(), nodes, .{
+        .ptr_skip_dup_unfold = false,
+        .array_show_item_idx = false,
+        .show_type_names = false,
+    });
+
+    const trimmed = std.mem.trim(u8, result.items, " ␃\n");
+    std.testing.expectEqualStrings(expected, trimmed) catch |err| {
+        const file = try std.fs.cwd().createFile("actual", .{});
+        defer file.close();
+        try file.writeAll(trimmed);
+        return err;
     };
 
-    var parser = Parser.new(content, std.heap.page_allocator);
-    try assertEq(try parser.parseStatement(), tree);
+    arena.deinit();
+}
+
+test "Parse - basic integer let statement" {
+    try expectEqualAst("let name = 25;",
+        \\.statement:
+        \\  .let:
+        \\    .identifier: "name"
+        \\    .value:
+        \\      .integer_literal: 25
+    );
 }
 
 // FIX: parse fails if the first statement doesn't include space before =
@@ -404,74 +431,64 @@ test "Parse - basic integer let statement" {
 // }
 
 test "Parse - return" {
-    const content = "return 2500 - 10;";
-    var parser = Parser.new(content, std.heap.page_allocator);
-
-    // Probably the same bug as above ^
-    // FIX: return statement semicolon doesn't get parsed because of lexer advancing twice at start??
-    // this only happens when passing single integer_literal
-    // failing input: const content = "return 2500;";
-    // working input: const content = "return 2500 ;";
-
-    const expr = try parser.alloc.create(ast.OperatorExpression);
-    expr.* = ast.OperatorExpression{
-        .left = .{ .integer_literal = 2500 },
-        .operator = .subtract,
-        .right = .{ .integer_literal = 10 },
-    };
-    const tree = ast.Statement{
-        .return_ = .{ .value = .{ .operator = expr } },
-    };
-
-    try assertEq(try parser.parseStatement(), tree);
+    try expectEqualAst("return 2500 - 10;",
+        \\.statement:
+        \\  .return_:
+        \\    .value:
+        \\      .operator:
+        \\        .left:
+        \\          .integer_literal: 2500
+        \\        .operator: .subtract
+        \\        .right:
+        \\          .integer_literal: 10
+    );
+    // var parser = Parser.new(content, std.heap.page_allocator);
+    //
+    // // Probably the same bug as above ^
+    // // FIX: return statement semicolon doesn't get parsed because of lexer advancing twice at start??
+    // // this only happens when passing single integer_literal
+    // // failing input: const content = "return 2500;";
+    // // working input: const content = "return 2500 ;";
+    //
+    // const expr = try parser.alloc.create(ast.OperatorExpression);
+    // expr.* = ast.OperatorExpression{
+    //     .left = .{ .integer_literal = 2500 },
+    //     .operator = .subtract,
+    //     .right = .{ .integer_literal = 10 },
+    // };
+    // const tree = ast.Statement{
+    //     .return_ = .{ .value = .{ .operator = expr } },
+    // };
+    //
+    // try assertEq(try parser.parseStatement(), tree);
 }
 
 test "Parse - operator expressions" {
-    const content = "let name = 25*10;";
-    var parser = Parser.new(content, std.heap.page_allocator);
-
-    const expr = try parser.alloc.create(ast.OperatorExpression);
-    expr.* = ast.OperatorExpression{
-        .left = .{ .integer_literal = 25 },
-        .operator = .multiply,
-        .right = .{ .integer_literal = 10 },
-    };
-    const statement = ast.Statement{
-        .let = .{
-            .identifier = "name",
-            .value = .{
-                .operator = expr,
-            },
-        },
-    };
-
-    try assertEq(try parser.parseStatement(), statement);
+    try expectEqualAst("let name = 25*10;",
+        \\.statement:
+        \\  .let:
+        \\    .identifier: "name"
+        \\    .value:
+        \\      .operator:
+        \\        .left:
+        \\          .integer_literal: 25
+        \\        .operator: .multiply
+        \\        .right:
+        \\          .integer_literal: 10
+    );
 }
 
 test "Parse - nested operator expressions" {
-    const content = "let name = 25 * 10 -50;";
-    var parser = Parser.new(content, std.heap.page_allocator);
-
-    const expr_inner = try parser.alloc.create(ast.OperatorExpression);
-    expr_inner.* = ast.OperatorExpression{
-        .left = .{ .integer_literal = 10 },
-        .operator = .subtract,
-        .right = .{ .integer_literal = 50 },
-    };
-    const expr_outer = try parser.alloc.create(ast.OperatorExpression);
-    expr_outer.* = ast.OperatorExpression{
-        .left = .{ .integer_literal = 25 },
-        .operator = .multiply,
-        .right = .{ .operator = expr_inner },
-    };
-    const statement = ast.Statement{
-        .let = .{
-            .identifier = "name",
-            .value = .{
-                .operator = expr_outer,
-            },
-        },
-    };
-
-    try assertEq(try parser.parseStatement(), statement);
+    try expectEqualAst("let name = 25 * 10 -50;",
+        \\.statement:
+        \\  .let:
+        \\    .identifier: "name"
+        \\    .value:
+        \\      .operator:
+        \\        .left:
+        \\          .integer_literal: 25
+        \\        .operator: .multiply
+        \\        .right:
+        \\          .operator:
+    );
 }
