@@ -4,6 +4,7 @@ const utils = @import("utils.zig");
 const lex = @import("lexer.zig");
 
 const Array = std.ArrayList;
+const eql = std.meta.eql;
 
 pub const ParseError = error{
     IdentifierExpected,
@@ -12,7 +13,6 @@ pub const ParseError = error{
     IntegerExpected,
     OperatorExpected,
     ExpressionExpected,
-    InvalidInteger,
 
     OpenParenExpected,
     CloseParenExpected,
@@ -23,6 +23,7 @@ pub const ParseError = error{
     IllegalIdentifier,
 
     UnexpectedEof,
+    InvalidInteger,
     InvalidToken, // Maybe this is a bit too general
 };
 
@@ -66,19 +67,14 @@ pub const Parser = struct {
     }
 
     fn expectKeyword(self: *Self, expected: lex.Keyword) ParseError!void {
-        switch (self.curr_token.?) {
-            .keyword => |kw| {
-                if (kw != expected) {
-                    return ParseError.InvalidToken;
-                } else self.nextToken();
-            },
-            else => return ParseError.InvalidToken,
-        }
+        if (!eql(self.curr_token.?, .{ .keyword = expected })) {
+            return ParseError.InvalidToken;
+        } else self.nextToken();
     }
 
     fn expectToken(self: *Self, expected: lex.Token) !void {
         if (self.curr_token) |tok| {
-            if (std.meta.eql(tok, expected)) {
+            if (eql(tok, expected)) {
                 self.nextToken();
                 return;
             } else {
@@ -123,10 +119,10 @@ pub const Parser = struct {
     pub fn parseNodes(self: *Self) ParseError![]ast.Node {
         var nodes = Array(ast.Node).init(self.alloc);
 
-        while (!std.meta.eql(self.curr_token, .eof)) {
+        while (!eql(self.curr_token, .eof)) {
             const node = self.parseNode() catch |err| {
                 if (err == ParseError.ExpressionExpected and
-                    std.meta.eql(self.curr_token, .rsquirly))
+                    eql(self.curr_token, .rsquirly))
                 {
                     break;
                 }
@@ -179,7 +175,7 @@ pub const Parser = struct {
             .asterisk => .multiply,
             .forward_slash => .divide,
             .dot => blk: {
-                if (std.meta.eql(self.peek_token.?, .dot)) {
+                if (eql(self.peek_token.?, .dot)) {
                     break :blk .concat;
                 }
                 return ParseError.OperatorExpected;
@@ -267,7 +263,7 @@ pub const Parser = struct {
         self.nextToken();
         try self.expectToken(.lparen);
 
-        while (!std.meta.eql(self.curr_token.?, .rparen)) {
+        while (!eql(self.curr_token.?, .rparen)) {
             const arg = try self.parseExpression();
             arguments.append(arg) catch @panic("unable to append");
         }
@@ -288,7 +284,7 @@ pub const Parser = struct {
         // arguments
         try self.expectToken(lex.Token.lparen);
         var arguments = Array(ast.FunctionArgument).init(self.alloc);
-        while (!std.meta.eql(self.curr_token.?, .rparen)) {
+        while (!eql(self.curr_token.?, .rparen)) {
             const arg = try self.parseFunctionArgument();
             arguments.append(arg) catch @panic("unable to append");
         }
@@ -313,6 +309,10 @@ pub const Parser = struct {
 
     pub fn parseLetStatement(self: *Self) ParseError!ast.LetStatement {
         self.nextToken();
+
+        const mutable = eql(self.curr_token.?, .{ .keyword = .mut });
+        if (mutable) self.nextToken();
+
         const ident = try self.parseIdentifier();
 
         if (!self.expectOperator(ast.Operator.equal)) {
@@ -324,7 +324,7 @@ pub const Parser = struct {
         const res = ast.LetStatement{
             .identifier = ident,
             .value = try self.parseExpression(),
-            .mutable = false, // TODO:
+            .mutable = mutable,
         };
 
         return res;
@@ -345,7 +345,7 @@ pub const Parser = struct {
             },
 
             .ident => |ident| blk: {
-                if (std.meta.eql(self.peek_token, .lparen)) {
+                if (eql(self.peek_token, .lparen)) {
                     const expr = self.alloc.create(ast.FunctionCall) catch @panic("unable to allocate");
                     expr.* = try self.parseFunctionCallExpression(ident);
 
@@ -442,23 +442,32 @@ fn expectEqualAst(content: []const u8, expected: []const u8) !void {
     arena.deinit();
 }
 
-test "Parse - basic integer let statement" {
-    try expectEqualAst("let name = 25;",
+test "Parse - let statements" {
+    try expectEqualAst("let age=21;",
         \\.statement:
         \\  .let:
-        \\    .identifier: "name"
+        \\    .identifier: "age"
         \\    .value:
-        \\      .integer_literal: 25
+        \\      .integer_literal: 21
+        \\    .mutable: false
     );
-}
 
-test "Parse - whitespace variations" {
-    try expectEqualAst("let name=25;",
+    try expectEqualAst("let mut age = 21;",
+        \\.statement:
+        \\  .let:
+        \\    .identifier: "age"
+        \\    .value:
+        \\      .integer_literal: 21
+        \\    .mutable: true
+    );
+
+    try expectEqualAst("let name = \"bob\";",
         \\.statement:
         \\  .let:
         \\    .identifier: "name"
         \\    .value:
-        \\      .integer_literal: 25
+        \\      .string_literal: "bob"
+        \\    .mutable: false
     );
 }
 
@@ -495,11 +504,12 @@ test "Parse - operator expressions" {
         \\        .operator: .multiply
         \\        .right:
         \\          .integer_literal: 10
+        \\    .mutable: false
     );
 }
 
 test "Parse - nested operator expressions" {
-    try expectEqualAst("let name = 25 * 10 -50;",
+    try expectEqualAst("let name = 25 * 10 - 50;",
         \\.statement:
         \\  .let:
         \\    .identifier: "name"
@@ -510,5 +520,32 @@ test "Parse - nested operator expressions" {
         \\        .operator: .multiply
         \\        .right:
         \\          .operator:
+        \\    .mutable: false
+    );
+}
+
+test "Parse - conditionals" {
+    try expectEqualAst(
+        \\if 100 > 50 {
+        \\  let a = "bigger";
+        \\};
+    ,
+        \\.statement:
+        \\  .if_else:
+        \\    .condition:
+        \\      .operator:
+        \\        .left:
+        \\          .integer_literal: 100
+        \\        .operator: .greater_than
+        \\        .right:
+        \\          .integer_literal: 50
+        \\    .consequence:
+        \\      .nodes:
+        \\        .statement:
+        \\          .let:
+        \\            .identifier:
+        \\            .value:
+        \\            .mutable:
+        \\    .alternative: null
     );
 }
