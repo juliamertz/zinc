@@ -121,7 +121,7 @@ pub const Interpreter = struct {
     fn evaluateExpression(self: *Self, expr: ast.Expression, scope: *Scope) EvalError!values.Value {
         return switch (expr) {
             .integer_literal => |val| .{ .integer = val },
-            .operator => |val| try self.evaluateOperatorExpression(val.*, scope),
+            .operator => |val| try self.evaluateBinaryExpression(val.*, scope),
             .identifier => |val| {
                 return scope.variables.get(val) orelse EvalError.NoSuchVariable;
             },
@@ -183,7 +183,7 @@ pub const Interpreter = struct {
         }
     }
 
-    fn evaluateIntegerOperatorExpression(op: ast.Operator, left: i64, right: i64) EvalError!values.Value {
+    fn evaluateIntegerBinaryExpression(op: ast.Operator, left: i64, right: i64) EvalError!values.Value {
         return switch (op) {
             .add => .{ .integer = left + right },
             .subtract => .{ .integer = left - right },
@@ -198,7 +198,7 @@ pub const Interpreter = struct {
         };
     }
 
-    fn evaluateBooleanOperatorExpression(op: ast.Operator, left: bool, right: bool) EvalError!bool {
+    fn evaluateBooleanBinaryExpression(op: ast.Operator, left: bool, right: bool) EvalError!bool {
         return switch (op) {
             .and_operator => left and right,
             .or_operator => left or right,
@@ -207,7 +207,7 @@ pub const Interpreter = struct {
         };
     }
 
-    fn evaluateStringOperatorExpression(self: *Self, op: ast.Operator, left: []const u8, right: []const u8) EvalError![]const u8 {
+    fn evaluateStringBinaryExpression(self: *Self, op: ast.Operator, left: []const u8, right: []const u8) EvalError![]const u8 {
         return switch (op) {
             .concat => {
                 const buff = [2][]const u8{ left, right };
@@ -219,25 +219,25 @@ pub const Interpreter = struct {
         };
     }
 
-    fn evaluateOperatorExpression(self: *Self, expr: ast.OperatorExpression, scope: *Scope) EvalError!values.Value {
+    fn evaluateBinaryExpression(self: *Self, expr: ast.BinaryExpression, scope: *Scope) EvalError!values.Value {
         const left = try self.evaluateExpression(expr.left, scope);
         const right = try self.evaluateExpression(expr.right, scope);
 
         return switch (left) {
             .integer => |l_val| switch (right) {
-                .integer => |r_val| try evaluateIntegerOperatorExpression(expr.operator, l_val, r_val),
+                .integer => |r_val| try evaluateIntegerBinaryExpression(expr.operator, l_val, r_val),
                 else => EvalError.MismatchedTypes,
             },
             .boolean => |l_val| switch (right) {
                 .boolean => |r_val| .{
-                    .boolean = try evaluateBooleanOperatorExpression(expr.operator, l_val, r_val),
+                    .boolean = try evaluateBooleanBinaryExpression(expr.operator, l_val, r_val),
                 },
                 else => EvalError.MismatchedTypes,
             },
             .string => |l_val| switch (right) {
                 .string => |r_val| blk: {
                     break :blk .{
-                        .string = try self.evaluateStringOperatorExpression(expr.operator, l_val, r_val),
+                        .string = try self.evaluateStringBinaryExpression(expr.operator, l_val, r_val),
                     };
                 },
                 else => EvalError.MismatchedTypes,

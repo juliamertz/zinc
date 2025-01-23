@@ -378,11 +378,11 @@ pub const Parser = struct {
     // TODO: operator precedence
     // A discussion with Casey Muratori about how easy precedence is...
     // https://www.youtube.com/watch?v=fIPO4G42wYE&t=6165s
-    fn parseBinaryExpression(self: *Self, left: ast.Expression) ParseError!*ast.OperatorExpression {
+    fn parseBinaryExpression(self: *Self, left: ast.Expression) ParseError!*ast.BinaryExpression {
         const op = try self.parseOperator();
 
-        const expr = self.alloc.create(ast.OperatorExpression) catch @panic("unable to allocate");
-        expr.* = ast.OperatorExpression{
+        const expr = self.alloc.create(ast.BinaryExpression) catch @panic("unable to allocate");
+        expr.* = ast.BinaryExpression{
             .left = left,
             .operator = op,
             .right = try self.parseExpression(),
@@ -426,8 +426,9 @@ fn expectEqualAst(content: []const u8, expected: []const u8) !void {
 
     const pretty = @import("pretty");
     try pretty.printWriter(alloc, result.writer(), nodes, .{
-        .ptr_skip_dup_unfold = false,
         .array_show_item_idx = false,
+        .max_depth = std.math.maxInt(u8),
+        .ptr_skip_dup_unfold = false,
         .show_type_names = false,
     });
 
@@ -520,6 +521,11 @@ test "Parse - nested operator expressions" {
         \\        .operator: .multiply
         \\        .right:
         \\          .operator:
+        \\            .left:
+        \\              .integer_literal: 10
+        \\            .operator: .subtract
+        \\            .right:
+        \\              .integer_literal: 50
         \\    .mutable: false
     );
 }
@@ -543,9 +549,10 @@ test "Parse - conditionals" {
         \\      .nodes:
         \\        .statement:
         \\          .let:
-        \\            .identifier:
+        \\            .identifier: "a"
         \\            .value:
-        \\            .mutable:
+        \\              .string_literal: "bigger"
+        \\            .mutable: false
         \\    .alternative: null
     );
 }

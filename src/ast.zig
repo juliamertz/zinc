@@ -20,7 +20,7 @@ pub const Statement = union(enum) {
 };
 
 pub const Expression = union(enum) {
-    operator: *OperatorExpression,
+    operator: *BinaryExpression,
     integer_literal: i64,
     identifier: []const u8,
     function_call: *FunctionCall,
@@ -64,7 +64,7 @@ pub const ReturnStatement = struct {
     value: Expression,
 };
 
-pub const OperatorExpression = struct {
+pub const BinaryExpression = struct {
     left: Expression,
     operator: Operator,
     right: Expression,

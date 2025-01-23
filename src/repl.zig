@@ -26,6 +26,7 @@ pub fn run(alloc: std.mem.Allocator, interpreter: *interp.Interpreter, content: 
 
     try pretty.printWriter(alloc, std.io.getStdErr().writer(), nodes, .{
         .print_extra_empty_line = true,
+        .max_depth = std.math.maxInt(u8),
         .ptr_skip_dup_unfold = false,
         .show_type_names = false,
     });
