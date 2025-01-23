@@ -65,6 +65,17 @@ pub const Parser = struct {
         return operator == expected;
     }
 
+    fn expectKeyword(self: *Self, expected: lex.Keyword) ParseError!void {
+        switch (self.curr_token.?) {
+            .keyword => |kw| {
+                if (kw != expected) {
+                    return ParseError.InvalidToken;
+                } else self.nextToken();
+            },
+            else => return ParseError.InvalidToken,
+        }
+    }
+
     fn expectToken(self: *Self, expected: lex.Token) !void {
         if (self.curr_token) |tok| {
             if (std.meta.eql(tok, expected)) {
@@ -86,8 +97,24 @@ pub const Parser = struct {
     }
 
     pub fn parseNode(self: *Self) ParseError!ast.Node {
-        if (self.curr_token.? == .keyword) {
-            return .{ .statement = try self.parseStatement() };
+        switch (self.curr_token.?) {
+            .keyword => return .{ .statement = try self.parseStatement() },
+            .ident => return {
+                const ident = try self.parseIdentifier();
+                try self.expectToken(.equal);
+                const expr = try self.parseExpression();
+                try self.expectToken(.semicolon);
+
+                return .{
+                    .statement = .{
+                        .assign = .{
+                            .identifier = ident,
+                            .value = expr,
+                        },
+                    },
+                };
+            },
+            else => {},
         }
 
         return .{ .expression = try self.parseExpression() };
@@ -98,7 +125,11 @@ pub const Parser = struct {
 
         while (!std.meta.eql(self.curr_token, .eof)) {
             const node = self.parseNode() catch |err| {
-                if (std.meta.eql(self.curr_token, .rsquirly)) break;
+                if (err == ParseError.ExpressionExpected and
+                    std.meta.eql(self.curr_token, .rsquirly))
+                {
+                    break;
+                }
                 return err;
             };
 
@@ -110,11 +141,8 @@ pub const Parser = struct {
 
     pub fn parseBlock(self: *Self) ParseError!ast.BlockStatement {
         try self.expectToken(.lsquirly);
-
         const nodes = try self.parseNodes();
-
         try self.expectToken(.rsquirly);
-
         return .{ .nodes = nodes };
     }
 
@@ -218,13 +246,18 @@ pub const Parser = struct {
         };
     }
 
+    fn parseOptionalElseStatement(self: *Self) ParseError!?ast.BlockStatement {
+        try self.expectKeyword(.else_token);
+        return try self.parseBlock();
+    }
+
     pub fn parseIfElseStatement(self: *Self) ParseError!ast.IfStatement {
         self.nextToken();
 
         return ast.IfStatement{
             .condition = try self.parseExpression(),
             .consequence = try self.parseBlock(),
-            .alternative = null,
+            .alternative = self.parseOptionalElseStatement() catch null, // TODO:
         };
     }
 
@@ -291,6 +324,7 @@ pub const Parser = struct {
         const res = ast.LetStatement{
             .identifier = ident,
             .value = try self.parseExpression(),
+            .mutable = false, // TODO:
         };
 
         return res;
@@ -363,7 +397,7 @@ pub const Parser = struct {
             var number: u32 = 0;
             while (iter.next()) |line| {
                 number += 1;
-                if (self.lexer.line == number) {
+                if (self.lexer.line + 1 == number) {
                     const linenumber = std.fmt.allocPrint(self.alloc, "{d}: ", .{number}) catch unreachable;
                     std.debug.print("{s}{s}\n", .{ linenumber, line });
                     const padding = utils.repeatString(self.alloc, " ", line.len + linenumber.len - 1) catch unreachable;
@@ -390,7 +424,7 @@ fn expectEqualAst(content: []const u8, expected: []const u8) !void {
     const nodes = try parser.parseNodes();
     var result = Array(u8).init(alloc);
 
-    const pretty = @import("./pretty/src/pretty.zig");
+    const pretty = @import("pretty");
     try pretty.printWriter(alloc, result.writer(), nodes, .{
         .ptr_skip_dup_unfold = false,
         .array_show_item_idx = false,

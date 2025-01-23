@@ -1,5 +1,5 @@
 const std = @import("std");
-const pretty = @import("./pretty/src/pretty.zig");
+const pretty = @import("pretty");
 const utils = @import("utils.zig");
 
 const lex = @import("lexer.zig");

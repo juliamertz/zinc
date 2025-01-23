@@ -2,6 +2,8 @@ const std = @import("std");
 const ast = @import("../ast.zig");
 const values = @import("values.zig");
 
+const HashMap = std.StringHashMap;
+
 const EvalError = error{
     MismatchedTypes,
     NoSuchVariable,
@@ -13,7 +15,14 @@ const EvalError = error{
 
 pub const Scope = struct {
     parent: ?*Scope,
-    variables: std.StringHashMap(values.Value),
+    variables: HashMap(values.Value),
+
+    fn init(alloc: std.mem.Allocator, parent: ?*Scope) Scope {
+        return Scope{
+            .parent = parent,
+            .variables = HashMap(values.Value).init(alloc),
+        };
+    }
 };
 
 pub const Interpreter = struct {
@@ -25,10 +34,7 @@ pub const Interpreter = struct {
     pub fn new(alloc: std.mem.Allocator) Self {
         return Self{
             .alloc = alloc,
-            .root = Scope{
-                .parent = null,
-                .variables = std.StringHashMap(values.Value).init(alloc),
-            },
+            .root = Scope.init(alloc, null),
         };
     }
 
@@ -39,10 +45,10 @@ pub const Interpreter = struct {
         try self.printDebug();
     }
 
-    fn evaluateBlock(self: *Self, module: ast.BlockStatement) EvalError!values.Value {
-        var res: ?values.Value = null;
+    fn evaluateBlock(self: *Self, module: ast.BlockStatement, scope: *Scope) EvalError!values.Value {
+        var res: values.Value = .null;
         for (module.nodes, 0..) |node, i| {
-            const val = try self.evaluateNode(node, &self.root);
+            const val = try self.evaluateNode(node, scope);
             if (i == module.nodes.len - 1) {
                 res = val;
             }
@@ -83,7 +89,11 @@ pub const Interpreter = struct {
                 const value = try self.evaluateExpression(stmnt.condition, scope);
                 switch (value) {
                     .boolean => |do| {
-                        if (do) {}
+                        if (do) {
+                            var if_scope = Scope.init(self.alloc, scope);
+                            // TODO: return last value without return keyword
+                            _ = try self.evaluateBlock(stmnt.consequence, &if_scope);
+                        }
                     },
                     else => @panic("boolean expected"),
                 }
@@ -91,6 +101,20 @@ pub const Interpreter = struct {
                 return values.Value.null;
             },
             .return_ => EvalError.IllegalReturn,
+            .assign => |stmnt| {
+                const exists = scope.variables.contains(stmnt.identifier);
+                if (!exists) {
+                    return EvalError.NoSuchVariable;
+                }
+
+                scope.variables.put(
+                    stmnt.identifier,
+                    try self.evaluateExpression(stmnt.value, scope),
+                ) catch @panic("unable to append");
+
+                return values.Value.null;
+            },
+            // else => unreachable,
         };
     }
 
@@ -202,13 +226,13 @@ pub const Interpreter = struct {
         return switch (left) {
             .integer => |l_val| switch (right) {
                 .integer => |r_val| try evaluateIntegerOperatorExpression(expr.operator, l_val, r_val),
-                else => @panic("todo"),
+                else => EvalError.MismatchedTypes,
             },
             .boolean => |l_val| switch (right) {
                 .boolean => |r_val| .{
                     .boolean = try evaluateBooleanOperatorExpression(expr.operator, l_val, r_val),
                 },
-                else => @panic("todo"),
+                else => EvalError.MismatchedTypes,
             },
             .string => |l_val| switch (right) {
                 .string => |r_val| blk: {
@@ -216,7 +240,7 @@ pub const Interpreter = struct {
                         .string = try self.evaluateStringOperatorExpression(expr.operator, l_val, r_val),
                     };
                 },
-                else => @panic("todo"),
+                else => EvalError.MismatchedTypes,
             },
             else => @panic("todo"),
         };

@@ -11,6 +11,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const pretty = b.dependency("pretty", .{ .target = target, .optimize = optimize });
+    exe.root_module.addImport("pretty", pretty.module("pretty"));
+
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
@@ -33,6 +36,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    parser_tests.root_module.addImport("pretty", pretty.module("pretty"));
 
     const run_lexer_tests = b.addRunArtifact(lexer_tests);
     const run_parser_tests = b.addRunArtifact(parser_tests);

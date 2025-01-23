@@ -2,12 +2,12 @@
     .name = "mylang",
     .version = "0.0.1",
     .minimum_zig_version = "0.14.0",
-    // .dependencies = .{
-    //     .pretty = .{
-    //         .url = "https://github.com/juliamertz/pretty/archive/refs/tags/dev.tar.gz",
-    //         .hash = "1220c150ce95a31deabfd96db2fa8d75228fbaccf36d101b8ab0ba25dceae0a81630",
-    //     },
-    // },
+    .dependencies = .{
+        .pretty = .{
+            .url = "https://github.com/juliamertz/pretty/archive/refs/tags/dev.tar.gz",
+            .hash = "12203b70b87bb3c925094717ebccf7a5a9ab8c84574cdd7eb5286a3699da0b9e83d5",
+        },
+    },
 
     .paths = .{
         "build.zig",
