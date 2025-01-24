@@ -16,12 +16,14 @@ fn read_input(alloc: std.mem.Allocator) !?[]const u8 {
     return input;
 }
 
+const print_trace = false;
+
 pub fn run(alloc: std.mem.Allocator, interpreter: *interp.Interpreter, content: []const u8) !void {
     var parser = parse.Parser.new(content, alloc);
     const nodes = parser.parseNodes() catch |err| {
-        const msg = try std.fmt.allocPrint(alloc, "error while parsing input at position {d}:\n", .{parser.lexer.position});
-        parser.printDebug(msg, true);
-        return err;
+        parser.printDebug("Parsing errors", true);
+        if (print_trace) return err;
+        unreachable;
     };
 
     try pretty.printWriter(alloc, std.io.getStdErr().writer(), nodes, .{

@@ -6,18 +6,13 @@ const lex = @import("lexer.zig");
 const Array = std.ArrayList;
 const eql = std.meta.eql;
 
-pub const ParseError = error{
+pub const ParseErrorKind = error{
     IdentifierExpected,
     AssignmentExpected,
     SemicolonExpected,
     IntegerExpected,
     OperatorExpected,
     ExpressionExpected,
-
-    OpenParenExpected,
-    CloseParenExpected,
-    OpenSquirlyExpected,
-    CloseSquirlyExpected,
 
     IllegalKeyword,
     IllegalIdentifier,
@@ -27,73 +22,90 @@ pub const ParseError = error{
     InvalidToken, // Maybe this is a bit too general
 };
 
+pub const ParseError = struct {
+    kind: ParseErrorKind,
+    line: usize,
+    message: []const u8,
+};
+
 pub const Parser = struct {
     lexer: lex.Lexer,
     alloc: std.mem.Allocator,
+    errors: Array(ParseError),
 
-    curr_token: ?lex.Token,
-    peek_token: ?lex.Token,
+    curr_token: lex.Token,
+    peek_token: lex.Token,
 
     const Self = @This();
 
     pub fn new(content: []const u8, alloc: std.mem.Allocator) Self {
         var lexer = lex.Lexer.new(content);
-
         const curr = lexer.readToken();
         lexer.advance();
         const next = lexer.readToken();
 
         return Parser{
             .lexer = lexer,
+            .errors = Array(ParseError).init(alloc),
             .alloc = alloc,
             .curr_token = curr,
             .peek_token = next,
         };
     }
 
+    pub fn newError(self: *Self, kind: ParseErrorKind, comptime msg: []const u8, args: anytype) ParseErrorKind {
+        const err = ParseError{
+            .kind = kind,
+            .message = std.fmt.allocPrint(self.alloc, msg, args) catch "failed to print message??",
+            .line = self.lexer.position,
+        };
+        self.errors.append(err) catch @panic("unable to allocate for ParseError");
+        return kind;
+    }
+
     pub fn nextToken(self: *Self) void {
-        if (self.peek_token) |tok| {
-            self.curr_token = tok;
-        }
+        self.curr_token = self.peek_token;
         self.lexer.advance();
         self.peek_token = self.lexer.readToken();
     }
 
-    fn expectOperator(self: *Self, expected: ast.Operator) bool {
-        const operator = self.scanOperator() catch {
+    fn expectInfixOperator(self: *Self, expected: ast.InfixOperator) bool {
+        const operator = self.scanInfixOperator() catch {
             return false;
         };
         return operator == expected;
     }
 
-    fn expectKeyword(self: *Self, expected: lex.Keyword) ParseError!void {
-        if (!eql(self.curr_token.?, .{ .keyword = expected })) {
-            return ParseError.InvalidToken;
+    fn expectKeyword(self: *Self, expected: lex.Keyword) ParseErrorKind!void {
+        if (!eql(self.curr_token, .{ .keyword = expected })) {
+            return ParseErrorKind.InvalidToken;
         } else self.nextToken();
     }
 
     fn expectToken(self: *Self, expected: lex.Token) !void {
-        if (self.curr_token) |tok| {
-            if (eql(tok, expected)) {
-                self.nextToken();
-                return;
-            } else {
-                // TODO: find out if zig has a nicer way of doing this
-                return switch (expected) {
-                    .lparen => ParseError.OpenParenExpected,
-                    .rparen => ParseError.CloseParenExpected,
-                    .lsquirly => ParseError.OpenSquirlyExpected,
-                    .rsquirly => ParseError.CloseSquirlyExpected,
-                    else => ParseError.InvalidToken,
-                };
-            }
+        if (eql(self.curr_token, expected)) {
+            self.nextToken();
+            return;
         }
+        // // TODO: find out if zig has a nicer way of doing this
+        // return switch (expected) {
+        //     .lparen => ParseErrorKind.OpenParenExpected,
+        //     .rparen => ParseErrorKind.CloseParenExpected,
+        //     .lsquirly => ParseErrorKind.OpenSquirlyExpected,
+        //     .rsquirly => ParseErrorKind.CloseSquirlyExpected,
+        //     else => ParseErrorKind.InvalidToken,
+        // };
+        //
 
-        return ParseError.InvalidToken;
+        return self.newError(
+            ParseErrorKind.InvalidToken,
+            "expected next token to be {any}, got {any} instead",
+            .{ expected, self.curr_token },
+        );
     }
 
-    pub fn parseNode(self: *Self) ParseError!ast.Node {
-        switch (self.curr_token.?) {
+    pub fn parseNode(self: *Self) ParseErrorKind!ast.Node {
+        switch (self.curr_token) {
             .keyword => return .{ .statement = try self.parseStatement() },
             .ident => return {
                 const ident = try self.parseIdentifier();
@@ -116,12 +128,12 @@ pub const Parser = struct {
         return .{ .expression = try self.parseExpression() };
     }
 
-    pub fn parseNodes(self: *Self) ParseError![]ast.Node {
+    pub fn parseNodes(self: *Self) ParseErrorKind![]ast.Node {
         var nodes = Array(ast.Node).init(self.alloc);
 
         while (!eql(self.curr_token, .eof)) {
             const node = self.parseNode() catch |err| {
-                if (err == ParseError.ExpressionExpected and
+                if (err == ParseErrorKind.ExpressionExpected and
                     eql(self.curr_token, .rsquirly))
                 {
                     break;
@@ -135,59 +147,66 @@ pub const Parser = struct {
         return nodes.items;
     }
 
-    pub fn parseBlock(self: *Self) ParseError!ast.BlockStatement {
+    pub fn parseBlock(self: *Self) ParseErrorKind!ast.Block {
         try self.expectToken(.lsquirly);
         const nodes = try self.parseNodes();
         try self.expectToken(.rsquirly);
         return .{ .nodes = nodes };
     }
 
-    fn parseIdentifier(self: *Self) ParseError![]const u8 {
-        const ident: []const u8 = switch (self.curr_token.?) {
+    fn parseIdentifier(self: *Self) ParseErrorKind![]const u8 {
+        const ident: []const u8 = switch (self.curr_token) {
             .ident => |val| blk: {
                 self.nextToken();
                 break :blk val;
             },
-            else => return ParseError.IdentifierExpected,
+            else => return self.newError(ParseErrorKind.IdentifierExpected, "", .{}),
         };
 
         return ident;
     }
 
-    fn parseIntegerLiteral(self: *Self) ParseError!i64 {
-        const int = switch (self.curr_token.?) {
+    fn parseIntegerLiteral(self: *Self) ParseErrorKind!i64 {
+        const int = switch (self.curr_token) {
             .integer => |val| std.fmt.parseInt(i64, val, 10) catch {
-                return ParseError.InvalidInteger;
+                return self.newError(ParseErrorKind.InvalidInteger, "", .{});
             },
-            else => ParseError.IntegerExpected,
+            else => self.newError(ParseErrorKind.IntegerExpected, "", .{}),
         };
 
         self.nextToken();
         return int;
     }
 
-    fn scanOperator(self: *Self) ParseError!ast.Operator {
-        const token = self.curr_token orelse return ParseError.OperatorExpected;
-        const operator: ast.Operator = switch (token) {
+    fn scanPrefixOperator(self: *Self) ?ast.PrefixOperator {
+        return switch (self.curr_token) {
+            .minus => .minus,
+            .bang => .negate,
+            else => null,
+        };
+    }
+
+    fn scanInfixOperator(self: *Self) ParseErrorKind!ast.InfixOperator {
+        return switch (self.curr_token) {
             .equal => .equal,
             .plus => .add,
             .minus => .subtract,
             .asterisk => .multiply,
             .forward_slash => .divide,
             .dot => blk: {
-                if (eql(self.peek_token.?, .dot)) {
+                if (eql(self.peek_token, .dot)) {
                     break :blk .concat;
                 }
-                return ParseError.OperatorExpected;
+                return self.newError(ParseErrorKind.OperatorExpected, "", .{});
             },
             .langle => blk: {
-                if (self.peek_token.? == .equal) {
+                if (self.peek_token == .equal) {
                     break :blk .less_than_or_eq;
                 }
                 break :blk .less_than;
             },
             .rangle => blk: {
-                if (self.peek_token.? == .equal) {
+                if (self.peek_token == .equal) {
                     break :blk .greater_than_or_eq;
                 }
                 break :blk .greater_than;
@@ -195,18 +214,15 @@ pub const Parser = struct {
             .keyword => |val| switch (val) {
                 .and_token => .and_operator,
                 .or_token => .or_operator,
-                else => return ParseError.IllegalIdentifier,
+                else => return self.newError(ParseErrorKind.IllegalIdentifier, "", .{}),
             },
-            else => return ParseError.OperatorExpected,
+            else => return self.newError(ParseErrorKind.OperatorExpected, "", .{}),
         };
-
-        return operator;
     }
 
-    fn parseOperator(self: *Self) ParseError!ast.Operator {
-        const operator = try self.scanOperator();
+    fn parseInfixOperator(self: *Self) ParseErrorKind!ast.InfixOperator {
+        const operator = try self.scanInfixOperator();
         switch (operator) {
-            // skip extra for operators that span 2 tokens
             .less_than_or_eq, .greater_than_or_eq, .concat => self.nextToken(),
             else => {},
         }
@@ -214,40 +230,46 @@ pub const Parser = struct {
         return operator;
     }
 
-    pub fn parseStatement(self: *Self) ParseError!ast.Statement {
-        const statement: ast.Statement = switch (self.curr_token.?) {
+    fn parsePrefixOperator(self: *Self) ParseErrorKind!ast.PrefixOperator {
+        const operator = try self.scanPrefixOperator();
+        self.nextToken();
+        return operator;
+    }
+
+    pub fn parseStatement(self: *Self) ParseErrorKind!ast.Statement {
+        const statement: ast.Statement = switch (self.curr_token) {
             .keyword => |kw| switch (kw) {
                 .let => .{ .let = try self.parseLetStatement() },
                 .return_token => .{ .return_ = try self.parseReturnStatement() },
                 .function => .{ .function = try self.parseFunctionStatement() },
                 .if_token => .{ .if_else = try self.parseIfElseStatement() },
-                else => return ParseError.InvalidToken,
+                else => return self.newError(ParseErrorKind.InvalidToken, "", .{}),
             },
-            else => return ParseError.InvalidToken,
+            else => return self.newError(ParseErrorKind.InvalidToken, "", .{}),
         };
 
-        if (self.curr_token.? != lex.Token.semicolon) {
-            if (self.curr_token.? == lex.Token.eof) {
+        if (self.curr_token != lex.Token.semicolon) {
+            if (self.curr_token == lex.Token.eof) {
                 return statement;
             }
-            return ParseError.SemicolonExpected;
+            return self.newError(ParseErrorKind.SemicolonExpected, "", .{});
         } else self.nextToken();
 
         return statement;
     }
 
-    pub fn parseFunctionArgument(self: *Self) ParseError!ast.FunctionArgument {
+    pub fn parseFunctionArgument(self: *Self) ParseErrorKind!ast.FunctionArgument {
         return ast.FunctionArgument{
             .identifier = try self.parseIdentifier(),
         };
     }
 
-    fn parseOptionalElseStatement(self: *Self) ParseError!?ast.BlockStatement {
+    fn parseOptionalElseStatement(self: *Self) ParseErrorKind!?ast.Block {
         try self.expectKeyword(.else_token);
         return try self.parseBlock();
     }
 
-    pub fn parseIfElseStatement(self: *Self) ParseError!ast.IfStatement {
+    pub fn parseIfElseStatement(self: *Self) ParseErrorKind!ast.IfStatement {
         self.nextToken();
 
         return ast.IfStatement{
@@ -257,13 +279,13 @@ pub const Parser = struct {
         };
     }
 
-    pub fn parseFunctionCallExpression(self: *Self, ident: []const u8) ParseError!ast.FunctionCall {
+    pub fn parseFunctionCallExpression(self: *Self, ident: []const u8) ParseErrorKind!ast.FunctionCall {
         var arguments = Array(ast.Expression).init(self.alloc);
 
         self.nextToken();
         try self.expectToken(.lparen);
 
-        while (!eql(self.curr_token.?, .rparen)) {
+        while (!eql(self.curr_token, .rparen)) {
             const arg = try self.parseExpression();
             arguments.append(arg) catch @panic("unable to append");
         }
@@ -276,7 +298,7 @@ pub const Parser = struct {
         };
     }
 
-    pub fn parseFunctionStatement(self: *Self) ParseError!ast.FunctionStatement {
+    pub fn parseFunctionStatement(self: *Self) ParseErrorKind!ast.FunctionStatement {
         self.nextToken();
 
         const ident = try self.parseIdentifier();
@@ -284,7 +306,7 @@ pub const Parser = struct {
         // arguments
         try self.expectToken(lex.Token.lparen);
         var arguments = Array(ast.FunctionArgument).init(self.alloc);
-        while (!eql(self.curr_token.?, .rparen)) {
+        while (!eql(self.curr_token, .rparen)) {
             const arg = try self.parseFunctionArgument();
             arguments.append(arg) catch @panic("unable to append");
         }
@@ -299,7 +321,7 @@ pub const Parser = struct {
         };
     }
 
-    pub fn parseReturnStatement(self: *Self) ParseError!ast.ReturnStatement {
+    pub fn parseReturnStatement(self: *Self) ParseErrorKind!ast.ReturnStatement {
         self.nextToken();
 
         return ast.ReturnStatement{
@@ -307,16 +329,16 @@ pub const Parser = struct {
         };
     }
 
-    pub fn parseLetStatement(self: *Self) ParseError!ast.LetStatement {
+    pub fn parseLetStatement(self: *Self) ParseErrorKind!ast.LetStatement {
         self.nextToken();
 
-        const mutable = eql(self.curr_token.?, .{ .keyword = .mut });
+        const mutable = eql(self.curr_token, .{ .keyword = .mut });
         if (mutable) self.nextToken();
 
         const ident = try self.parseIdentifier();
 
-        if (!self.expectOperator(ast.Operator.equal)) {
-            return ParseError.AssignmentExpected;
+        if (!self.expectInfixOperator(ast.InfixOperator.equal)) {
+            return self.newError(self.newError(ParseErrorKind.AssignmentExpected, "", .{}), "", .{});
         } else {
             self.nextToken();
         }
@@ -330,18 +352,22 @@ pub const Parser = struct {
         return res;
     }
 
-    pub fn parseExpression(self: *Self) ParseError!ast.Expression {
-        const token: ast.Expression = switch (self.curr_token.?) {
+    pub fn parseExpression(self: *Self) ParseErrorKind!ast.Expression {
+        if (self.scanPrefixOperator()) |operator| {
+            return .{ .prefix_operator = try self.parsePrefixBinaryExpression(operator) };
+        }
+
+        const token: ast.Expression = switch (self.curr_token) {
             .integer => |val| .{
                 .integer_literal = std.fmt.parseInt(i64, val, 10) catch {
-                    return ParseError.InvalidInteger;
+                    return self.newError(ParseErrorKind.InvalidInteger, "", .{});
                 },
             },
 
             .keyword => |val| switch (val) {
                 .true_token => .{ .boolean = true },
                 .false_token => .{ .boolean = false },
-                else => return ParseError.IllegalKeyword,
+                else => return self.newError(ParseErrorKind.IllegalKeyword, "", .{}),
             },
 
             .ident => |ident| blk: {
@@ -356,33 +382,28 @@ pub const Parser = struct {
             .string_literal => |value| blk: {
                 break :blk .{ .string_literal = value };
             },
-
             .eof => unreachable,
 
-            else => return ParseError.ExpressionExpected,
+            else => return self.newError(ParseErrorKind.ExpressionExpected, "", .{}),
         };
 
         self.nextToken();
-
-        if (self.curr_token.? == .semicolon) {
-            return token;
-        }
-
-        _ = self.scanOperator() catch return token;
+        if (self.curr_token == .semicolon) return token;
+        _ = self.scanInfixOperator() catch return token;
 
         return .{
-            .operator = try self.parseBinaryExpression(token),
+            .infix_operator = try self.parseInfixBinaryExpression(token),
         };
     }
 
     // TODO: operator precedence
     // A discussion with Casey Muratori about how easy precedence is...
     // https://www.youtube.com/watch?v=fIPO4G42wYE&t=6165s
-    fn parseBinaryExpression(self: *Self, left: ast.Expression) ParseError!*ast.BinaryExpression {
-        const op = try self.parseOperator();
+    fn parseInfixBinaryExpression(self: *Self, left: ast.Expression) ParseErrorKind!*ast.InfixBinaryExpression {
+        const op = try self.parseInfixOperator();
 
-        const expr = self.alloc.create(ast.BinaryExpression) catch @panic("unable to allocate");
-        expr.* = ast.BinaryExpression{
+        const expr = self.alloc.create(ast.InfixBinaryExpression) catch @panic("unable to allocate");
+        expr.* = ast.InfixBinaryExpression{
             .left = left,
             .operator = op,
             .right = try self.parseExpression(),
@@ -391,8 +412,18 @@ pub const Parser = struct {
         return expr;
     }
 
-    pub fn printDebug(self: *Self, message: []const u8, err: bool) void {
-        if (err) {
+    fn parsePrefixBinaryExpression(self: *Self, left: ast.PrefixOperator) ParseErrorKind!*ast.PrefixBinaryExpression {
+        const expr = self.alloc.create(ast.PrefixBinaryExpression) catch @panic("unable to allocate");
+        self.nextToken();
+        expr.* = ast.PrefixBinaryExpression{
+            .left = left,
+            .right = try self.parseExpression(),
+        };
+        return expr;
+    }
+
+    pub fn printDebug(self: *Self, message: []const u8, print_position: bool) void {
+        if (print_position) {
             var iter = std.mem.splitSequence(u8, self.lexer.content, "\n");
             var number: u32 = 0;
             while (iter.next()) |line| {
@@ -405,11 +436,19 @@ pub const Parser = struct {
                 }
             }
         }
-        std.debug.print("{s}:\ncurr_token: {any}\npeek_token: {any}\n", .{
+        std.debug.print("{s}: curr_token: {any} peek_token: {any}\n", .{
             message,
             self.curr_token,
             self.peek_token,
         });
+
+        for (self.errors.items) |err| {
+            std.debug.print("error: {any} at line {d}\n{s}\n", .{
+                err.kind,
+                err.line,
+                err.message,
+            });
+        }
     }
 };
 

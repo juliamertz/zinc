@@ -8,6 +8,8 @@ pub const Keyword = enum {
     match,
     use,
 
+    for_token,
+    while_token,
     and_token,
     or_token,
     pub_token,
@@ -25,6 +27,8 @@ pub const Keyword = enum {
             .{ "match", .match },
             .{ "use", .use },
 
+            .{ "for", .for_token },
+            .{ "while", .while_token },
             .{ "or", .or_token },
             .{ "and", .and_token },
             .{ "pub", .pub_token },
@@ -52,6 +56,7 @@ pub const Token = union(enum) {
     backward_slash,
     ampersand,
     pipe,
+    bang,
 
     dot,
     comma,
@@ -134,6 +139,7 @@ pub const Lexer = struct {
             },
             '&' => .ampersand,
             '|' => .pipe,
+            '!' => .bang,
             '<' => .langle,
             '>' => .rangle,
             '{' => .lsquirly,

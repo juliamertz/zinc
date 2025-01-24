@@ -1,13 +1,14 @@
 const std = @import("std");
 const lex = @import("lexer.zig");
 
-pub const BlockStatement = struct {
+pub const Block = struct {
     nodes: []const Node,
 };
 
 pub const Node = union(enum) {
     statement: Statement,
     expression: Expression,
+    block: Block,
 };
 
 pub const Statement = union(enum) {
@@ -16,11 +17,11 @@ pub const Statement = union(enum) {
     return_: ReturnStatement,
     if_else: IfStatement,
     assign: AssingStatement,
-    // block: BlockStatement,
 };
 
 pub const Expression = union(enum) {
-    operator: *BinaryExpression,
+    infix_operator: *InfixBinaryExpression,
+    prefix_operator: *PrefixBinaryExpression,
     integer_literal: i64,
     identifier: []const u8,
     function_call: *FunctionCall,
@@ -41,8 +42,16 @@ pub const LetStatement = struct {
 
 pub const IfStatement = struct {
     condition: Expression,
-    consequence: BlockStatement,
-    alternative: ?BlockStatement,
+    consequence: Block,
+    alternative: ?Block,
+};
+
+pub const MatchStatement = struct {
+    condition: Expression,
+};
+
+pub const MatchArm = struct {
+    pattern: Expression,
 };
 
 pub const FunctionArgument = struct {
@@ -52,7 +61,7 @@ pub const FunctionArgument = struct {
 pub const FunctionStatement = struct {
     identifier: []const u8,
     arguments: []FunctionArgument,
-    body: BlockStatement,
+    body: Block,
 };
 
 pub const FunctionCall = struct {
@@ -64,13 +73,23 @@ pub const ReturnStatement = struct {
     value: Expression,
 };
 
-pub const BinaryExpression = struct {
+pub const InfixBinaryExpression = struct {
     left: Expression,
-    operator: Operator,
+    operator: InfixOperator,
     right: Expression,
 };
 
-pub const Operator = enum {
+pub const PrefixBinaryExpression = struct {
+    left: PrefixOperator,
+    right: Expression,
+};
+
+pub const PrefixOperator = enum {
+    negate,
+    minus,
+};
+
+pub const InfixOperator = enum {
     add,
     subtract,
     multiply,
