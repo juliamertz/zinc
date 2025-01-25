@@ -98,7 +98,7 @@ pub const Parser = struct {
         //
 
         return self.newError(
-            ParseErrorKind.InvalidToken,
+            error.InvalidToken,
             "expected next token to be {any}, got {any} instead",
             .{ expected, self.curr_token },
         );
@@ -160,7 +160,12 @@ pub const Parser = struct {
                 self.nextToken();
                 break :blk val;
             },
-            else => return self.newError(ParseErrorKind.IdentifierExpected, "", .{}),
+
+            else => return self.newError(
+                error.IdentifierExpected,
+                "expected next to be token to be an identifier, got {any}",
+                .{self.curr_token},
+            ),
         };
 
         return ident;
@@ -169,9 +174,17 @@ pub const Parser = struct {
     fn parseIntegerLiteral(self: *Self) ParseErrorKind!i64 {
         const int = switch (self.curr_token) {
             .integer => |val| std.fmt.parseInt(i64, val, 10) catch {
-                return self.newError(ParseErrorKind.InvalidInteger, "", .{});
+                return self.newError(
+                    error.InvalidInteger,
+                    "expected next token to be a valid integer, got {any}",
+                    .{self.curr_token},
+                );
             },
-            else => self.newError(ParseErrorKind.IntegerExpected, "", .{}),
+            else => self.newError(
+                error.IntegerExpected,
+                "expected next token to be an integer, got {any}",
+                .{self.curr_token},
+            ),
         };
 
         self.nextToken();
@@ -214,9 +227,17 @@ pub const Parser = struct {
             .keyword => |val| switch (val) {
                 .and_token => .and_operator,
                 .or_token => .or_operator,
-                else => return self.newError(ParseErrorKind.IllegalIdentifier, "", .{}),
+                else => return self.newError(
+                    error.IllegalKeyword,
+                    "The keyword {any} is not allowed here",
+                    .{val},
+                ),
             },
-            else => return self.newError(ParseErrorKind.OperatorExpected, "", .{}),
+            else => return self.newError(
+                ParseErrorKind.OperatorExpected,
+                "Operator expected, found {any}",
+                .{self.curr_token},
+            ),
         };
     }
 
@@ -461,17 +482,16 @@ fn expectEqualAst(content: []const u8, expected: []const u8) !void {
 
     var parser = Parser.new(content, alloc);
     const nodes = try parser.parseNodes();
-    var result = Array(u8).init(alloc);
 
     const pretty = @import("pretty");
-    try pretty.printWriter(alloc, result.writer(), nodes, .{
+    const result = try pretty.dump(alloc, nodes, .{
         .array_show_item_idx = false,
         .max_depth = std.math.maxInt(u8),
         .ptr_skip_dup_unfold = false,
         .show_type_names = false,
     });
 
-    const trimmed = std.mem.trim(u8, result.items, " ␃\n");
+    const trimmed = std.mem.trim(u8, result, " ␃\n");
     std.testing.expectEqualStrings(expected, trimmed) catch |err| {
         const file = try std.fs.cwd().createFile("actual", .{});
         defer file.close();
@@ -516,7 +536,7 @@ test "Parse - return" {
         \\.statement:
         \\  .return_:
         \\    .value:
-        \\      .operator:
+        \\      .infix_operator:
         \\        .left:
         \\          .integer_literal: 2500
         \\        .operator: .subtract
@@ -538,7 +558,7 @@ test "Parse - operator expressions" {
         \\  .let:
         \\    .identifier: "name"
         \\    .value:
-        \\      .operator:
+        \\      .infix_operator:
         \\        .left:
         \\          .integer_literal: 25
         \\        .operator: .multiply
@@ -554,12 +574,12 @@ test "Parse - nested operator expressions" {
         \\  .let:
         \\    .identifier: "name"
         \\    .value:
-        \\      .operator:
+        \\      .infix_operator:
         \\        .left:
         \\          .integer_literal: 25
         \\        .operator: .multiply
         \\        .right:
-        \\          .operator:
+        \\          .infix_operator:
         \\            .left:
         \\              .integer_literal: 10
         \\            .operator: .subtract
@@ -578,7 +598,7 @@ test "Parse - conditionals" {
         \\.statement:
         \\  .if_else:
         \\    .condition:
-        \\      .operator:
+        \\      .infix_operator:
         \\        .left:
         \\          .integer_literal: 100
         \\        .operator: .greater_than
