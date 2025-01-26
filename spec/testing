@@ -1,9 +1,11 @@
 let a= 100;
 
--- greet the user
-func greet(name) {
-  let msg = "hello there " .. name;
-  return msg;
-};
+let mygroup = 10 + (2 * 3);
 
-let message = greet("julia");
+-- greet the user
+-- func greet(name) {
+--   let msg = "hello there " .. name;
+--   return msg;
+-- };
+-- 
+-- let message = greet("julia");

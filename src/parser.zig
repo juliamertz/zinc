@@ -87,15 +87,6 @@ pub const Parser = struct {
             self.nextToken();
             return;
         }
-        // // TODO: find out if zig has a nicer way of doing this
-        // return switch (expected) {
-        //     .lparen => ParseErrorKind.OpenParenExpected,
-        //     .rparen => ParseErrorKind.CloseParenExpected,
-        //     .lsquirly => ParseErrorKind.OpenSquirlyExpected,
-        //     .rsquirly => ParseErrorKind.CloseSquirlyExpected,
-        //     else => ParseErrorKind.InvalidToken,
-        // };
-        //
 
         return self.newError(
             error.InvalidToken,
@@ -403,6 +394,13 @@ pub const Parser = struct {
             .string_literal => |value| blk: {
                 break :blk .{ .string_literal = value };
             },
+
+            .lparen => blk: {
+                const expr = self.alloc.create(ast.GroupedExpression) catch @panic("unable to allocate");
+                expr.* = try self.parseGroupedExpression();
+                break :blk .{ .grouped_expression = expr };
+            },
+
             .eof => unreachable,
 
             else => return self.newError(ParseErrorKind.ExpressionExpected, "", .{}),
@@ -417,12 +415,18 @@ pub const Parser = struct {
         };
     }
 
+    pub fn parseGroupedExpression(self: *Self) ParseErrorKind!ast.GroupedExpression {
+        try self.expectToken(.lparen);
+        const expr = try self.parseExpression();
+        try self.expectToken(.rparen);
+        return .{ .expression = expr };
+    }
+
     // TODO: operator precedence
     // A discussion with Casey Muratori about how easy precedence is...
     // https://www.youtube.com/watch?v=fIPO4G42wYE&t=6165s
     fn parseInfixBinaryExpression(self: *Self, left: ast.Expression) ParseErrorKind!*ast.InfixBinaryExpression {
         const op = try self.parseInfixOperator();
-
         const expr = self.alloc.create(ast.InfixBinaryExpression) catch @panic("unable to allocate");
         expr.* = ast.InfixBinaryExpression{
             .left = left,

@@ -20,6 +20,7 @@ pub const Statement = union(enum) {
 };
 
 pub const Expression = union(enum) {
+    grouped_expression: *GroupedExpression,
     infix_operator: *InfixBinaryExpression,
     prefix_operator: *PrefixBinaryExpression,
     integer_literal: i64,
@@ -27,6 +28,10 @@ pub const Expression = union(enum) {
     function_call: *FunctionCall,
     string_literal: []const u8,
     boolean: bool,
+};
+
+pub const GroupedExpression = struct {
+    expression: Expression,
 };
 
 pub const AssingStatement = struct {

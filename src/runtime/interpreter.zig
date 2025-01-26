@@ -149,6 +149,9 @@ pub const Interpreter = struct {
 
                 return EvalError.NoSuchFunction;
             },
+            .grouped_expression => |group| {
+                return try self.evaluateExpression(group.expression, scope);
+            },
         };
     }
 
