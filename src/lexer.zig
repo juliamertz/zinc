@@ -44,7 +44,7 @@ pub const Keyword = enum {
 
 pub const Token = union(enum) {
     ident: []const u8,
-    integer: []const u8,
+    integer: i64,
     keyword: Keyword,
     string_literal: []const u8,
 
@@ -79,8 +79,11 @@ pub const Token = union(enum) {
 pub const Lexer = struct {
     read_position: usize = 0,
     position: usize = 0,
-    line: usize = 0, // for pretty debug prints
     content: []const u8,
+
+    line: usize = 0, // for pretty debug prints
+    // TODO: keep track of current column position
+    column: usize = 0, // for pretty debug prints
 
     const Self = @This();
 
@@ -108,7 +111,12 @@ pub const Lexer = struct {
 
     fn skipWhitespace(self: *Self) void {
         while (utils.isWhitespace(self.current())) {
-            if (self.current() == '\n') self.line += 1;
+            if (self.current() == '\n') {
+                self.line += 1;
+                self.column = 0;
+            } else {
+                self.column += 1;
+            }
             self.advance();
         }
     }
@@ -117,6 +125,7 @@ pub const Lexer = struct {
         if (self.read_position != self.content.len) {
             self.position = self.read_position;
             self.read_position += 1;
+            self.column += 1;
         }
     }
 
@@ -170,7 +179,7 @@ pub const Lexer = struct {
                 break :blk .{ .ident = ident };
             },
 
-            '0'...'9' => .{ .integer = self.readInt() },
+            '0'...'9' => .{ .integer = self.readInt() catch @panic("unable to parse into i64") },
 
             0 => .eof,
             else => .illegal,
@@ -197,13 +206,13 @@ pub const Lexer = struct {
         return self.content[start .. self.read_position + 1];
     }
 
-    fn readInt(self: *Self) []const u8 {
+    fn readInt(self: *Self) !i64 {
         const start = self.read_position;
         while (std.ascii.isDigit(self.lookahead())) {
             self.advance();
         }
-
-        return self.content[start .. self.read_position + 1];
+        const numbers = self.content[start .. self.read_position + 1];
+        return std.fmt.parseInt(i64, numbers, 10);
     }
 };
 
@@ -246,7 +255,7 @@ test "Lexer - let statements" {
             .{ .keyword = .let },
             .{ .ident = "value" },
             .equal,
-            .{ .integer = "10" },
+            .{ .integer = 10 },
             .semicolon,
             .eof,
         },
@@ -258,7 +267,7 @@ test "Lexer - let statements" {
             .{ .keyword = .let },
             .{ .ident = "value" },
             .equal,
-            .{ .integer = "10" },
+            .{ .integer = 10 },
             .semicolon,
             .eof,
         },
@@ -270,7 +279,7 @@ test "Lexer - let statements" {
             .{ .keyword = .let },
             .{ .ident = "a" },
             .equal,
-            .{ .integer = "2500" },
+            .{ .integer = 2500 },
             .semicolon,
             .eof,
         },
@@ -298,9 +307,9 @@ test "Lexer - idk" {
             .{ .keyword = .let },
             .{ .ident = "twohundredfifty" },
             .equal,
-            .{ .integer = "25" },
+            .{ .integer = 25 },
             .asterisk,
-            .{ .integer = "10" },
+            .{ .integer = 10 },
             .semicolon,
             .eof,
         },

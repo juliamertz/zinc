@@ -129,6 +129,7 @@ pub const Interpreter = struct {
             },
             .boolean => |val| .{ .boolean = val },
             .string_literal => |val| .{ .string = val },
+            .match => @panic("todo"),
             .function_call => |func| {
                 if (scope.variables.get(func.identifier)) |ptr| {
                     const func_ptr: ast.FunctionStatement = switch (ptr) {
@@ -215,7 +216,7 @@ pub const Interpreter = struct {
 
     fn evaluateStringBinaryExpression(self: *Self, op: ast.InfixOperator, left: []const u8, right: []const u8) EvalError![]const u8 {
         return switch (op) {
-            .concat => {
+            .add => {
                 const buff = [2][]const u8{ left, right };
                 const result = std.mem.join(self.alloc, "", &buff) catch @panic("can't join strings");
                 return result;

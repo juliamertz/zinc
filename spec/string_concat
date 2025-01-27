@@ -1,1 +1,1 @@
-let greeting = "hey" .. " young world";
+let greeting = "hey" + " young world";

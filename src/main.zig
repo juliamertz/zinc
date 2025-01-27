@@ -1,4 +1,5 @@
 const std = @import("std");
+const parse = @import("parser.zig");
 const utils = @import("utils.zig");
 const lex = @import("lexer.zig");
 const repl = @import("./repl.zig");
@@ -26,6 +27,24 @@ pub fn main() !void {
 
             var interpreter = interp.Interpreter.new(arena.allocator());
             try repl.run(arena.allocator(), &interpreter, content);
+        } else if (eql(subcommand, "parse")) {
+            const filepath = args.next() orelse @panic("no filepath given");
+            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer arena.deinit();
+
+            const max = std.math.maxInt(usize);
+            const content = try std.fs.cwd().readFileAlloc(arena.allocator(), filepath, max);
+            try stdout.print("content:\n\n{s}\n", .{content});
+
+            var parser = parse.Parser.new(content, arena.allocator());
+            const nodes = parser.parseNodes() catch |err| {
+                parser.printDebug("Parsing errors", true);
+                return err;
+            };
+            try utils.printAst(arena.allocator(), nodes);
+
+            // var interpreter = interp.Interpreter.new(arena.allocator());
+            // try repl.run(arena.allocator(), &interpreter, content);
         }
         //
         else {

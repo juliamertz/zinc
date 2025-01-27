@@ -26,6 +26,7 @@ pub const Expression = union(enum) {
     integer_literal: i64,
     identifier: []const u8,
     function_call: *FunctionCall,
+    match: *MatchExpression,
     string_literal: []const u8,
     boolean: bool,
 };
@@ -51,12 +52,23 @@ pub const IfStatement = struct {
     alternative: ?Block,
 };
 
-pub const MatchStatement = struct {
-    condition: Expression,
+pub const MatchArm = struct {
+    pattern: Pattern, // TODO: actual pattern parsing
+    consequence: Expression,
 };
 
-pub const MatchArm = struct {
-    pattern: Expression,
+pub const MatchExpression = struct {
+    value: Expression,
+    arms: []MatchArm,
+};
+
+pub const IntegerRange = struct {
+    from: i64,
+    to: i64,
+};
+
+pub const Pattern = union(enum) {
+    integer_range: IntegerRange,
 };
 
 pub const FunctionArgument = struct {
@@ -99,6 +111,8 @@ pub const InfixOperator = enum(u8) {
     equal = 0,
     assign,
 
+    range,
+
     add,
     subtract,
     multiply,
@@ -111,7 +125,4 @@ pub const InfixOperator = enum(u8) {
     greater_than_or_eq,
     and_operator,
     or_operator,
-
-    // string concatenation with: ..
-    concat,
 };

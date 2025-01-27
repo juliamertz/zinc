@@ -25,6 +25,7 @@ pub const ParseErrorKind = error{
 pub const ParseError = struct {
     kind: ParseErrorKind,
     line: usize,
+    column: usize,
     message: []const u8,
 };
 
@@ -57,7 +58,8 @@ pub const Parser = struct {
         const err = ParseError{
             .kind = kind,
             .message = std.fmt.allocPrint(self.alloc, msg, args) catch "failed to print message??",
-            .line = self.lexer.line + 1,
+            .line = self.lexer.line,
+            .column = self.lexer.column,
         };
         self.errors.append(err) catch @panic("unable to allocate for ParseError");
         return kind;
@@ -69,11 +71,22 @@ pub const Parser = struct {
         self.peek_token = self.lexer.readToken();
     }
 
-    fn expectInfixOperator(self: *Self, expected: ast.InfixOperator) bool {
-        const operator = self.scanInfixOperator() catch {
-            return false;
+    fn expectInfixOperator(self: *Self, expected: ast.InfixOperator) ParseErrorKind!void {
+        const operator = self.scanInfixOperator() catch |err| {
+            return self.newError(
+                err,
+                "expected an infix operator got: {any}",
+                .{self.curr_token},
+            );
         };
-        return operator == expected;
+
+        if (operator != expected) {
+            return self.newError(
+                ParseErrorKind.InvalidToken, // TODO: InvalidOperator
+                "invalid operator expected: {any}, got: {any}",
+                .{ expected, operator },
+            );
+        }
     }
 
     fn expectKeyword(self: *Self, expected: lex.Keyword) ParseErrorKind!void {
@@ -94,16 +107,19 @@ pub const Parser = struct {
         );
     }
 
+    fn consumeToken(self: *Self, expected: lex.Token) !void {
+        try self.expectToken(expected);
+        self.nextToken();
+    }
+
     pub fn parseNode(self: *Self) ParseErrorKind!ast.Node {
         switch (self.curr_token) {
             .keyword => return .{ .statement = try self.parseStatement() },
             .ident => return {
                 const ident = try self.parseIdentifier();
-                try self.expectToken(.equal);
-                self.nextToken();
+                try self.consumeToken(.equal);
                 const expr = try self.parseExpression();
-                try self.expectToken(.semicolon);
-                self.nextToken();
+                try self.consumeToken(.semicolon);
 
                 return .{
                     .statement = .{
@@ -140,11 +156,9 @@ pub const Parser = struct {
     }
 
     pub fn parseBlock(self: *Self) ParseErrorKind!ast.Block {
-        try self.expectToken(.lsquirly);
-        self.nextToken();
+        try self.consumeToken(.lsquirly);
         const nodes = try self.parseNodes();
-        try self.expectToken(.rsquirly);
-        self.nextToken();
+        try self.consumeToken(.rsquirly);
         return .{ .nodes = nodes };
     }
 
@@ -202,9 +216,13 @@ pub const Parser = struct {
             .forward_slash => .divide,
             .dot => blk: {
                 if (eql(self.peek_token, .dot)) {
-                    break :blk .concat;
+                    break :blk .range;
                 }
-                return self.newError(ParseErrorKind.OperatorExpected, "", .{});
+                return self.newError(
+                    ParseErrorKind.OperatorExpected,
+                    "use .. for range operator",
+                    .{},
+                );
             },
             .langle => blk: {
                 if (self.peek_token == .equal) {
@@ -238,7 +256,7 @@ pub const Parser = struct {
     fn parseInfixOperator(self: *Self) ParseErrorKind!ast.InfixOperator {
         const operator = try self.scanInfixOperator();
         switch (operator) {
-            .less_than_or_eq, .greater_than_or_eq, .concat => self.nextToken(),
+            .less_than_or_eq, .greater_than_or_eq, .range => self.nextToken(),
             else => {},
         }
         self.nextToken();
@@ -283,15 +301,82 @@ pub const Parser = struct {
         return ast.IfStatement{
             .condition = try self.parseExpression(),
             .consequence = try self.parseBlock(),
-            .alternative = self.parseOptionalElseStatement() catch null, // FIX: legitemate errors while parsing else statements are ignored 
+            .alternative = self.parseOptionalElseStatement() catch null, // FIX: legitemate errors while parsing else statements are ignored
         };
+    }
+
+    pub fn parseMatchExpression(self: *Self) ParseErrorKind!ast.MatchExpression {
+        self.nextToken();
+        const value = try self.parseExpression();
+        try self.consumeToken(.lsquirly);
+
+        var arms = Array(ast.MatchArm).init(self.alloc);
+        while (self.curr_token != .rsquirly) {
+            const arm = try self.parseMatchArm();
+            arms.append(arm) catch @panic("unable to append");
+        }
+
+        try self.consumeToken(.rsquirly);
+
+        return ast.MatchExpression{
+            .value = value, // TODO:
+            .arms = arms.items,
+        };
+    }
+
+    pub fn parseMatchArm(self: *Self) ParseErrorKind!ast.MatchArm {
+        const pattern = try self.parseMatchPattern();
+        try self.consumeToken(.minus);
+        try self.consumeToken(.rangle);
+
+        const expr = try self.parseExpression();
+        try self.consumeToken(.comma);
+
+        const arm = ast.MatchArm{
+            .pattern = pattern,
+            .consequence = expr,
+        };
+        return arm;
+    }
+
+    pub fn parseMatchPattern(self: *Self) ParseErrorKind!ast.Pattern {
+        switch (self.curr_token) {
+            .integer => |val| {
+                const from = val;
+                self.nextToken();
+                try self.expectInfixOperator(.range);
+                self.nextToken();
+                self.nextToken();
+                const to = switch (self.curr_token) {
+                    .integer => |rval| rval,
+                    else => return self.newError(
+                        ParseErrorKind.InvalidInteger,
+                        "invalid integer: {any}",
+                        .{self.curr_token},
+                    ),
+                };
+                self.nextToken();
+
+                return .{
+                    .integer_range = ast.IntegerRange{
+                        .from = from,
+                        .to = to,
+                    },
+                };
+            },
+
+            else => return self.newError(
+                ParseErrorKind.InvalidToken,
+                "Invalid match pattern",
+                .{},
+            ),
+        }
     }
 
     pub fn parseFunctionCallExpression(self: *Self, ident: []const u8) ParseErrorKind!ast.FunctionCall {
         var arguments = Array(ast.Expression).init(self.alloc);
         self.nextToken();
-        try self.expectToken(.lparen);
-        self.nextToken();
+        try self.consumeToken(.lparen);
 
         while (!eql(self.curr_token, .rparen)) {
             const arg = try self.parseExpression();
@@ -312,8 +397,7 @@ pub const Parser = struct {
         const ident = try self.parseIdentifier();
 
         // arguments
-        try self.expectToken(lex.Token.lparen);
-        self.nextToken();
+        try self.consumeToken(lex.Token.lparen);
 
         var arguments = Array(ast.FunctionArgument).init(self.alloc);
         while (!eql(self.curr_token, .rparen)) {
@@ -321,13 +405,11 @@ pub const Parser = struct {
             arguments.append(arg) catch @panic("unable to append");
         }
 
-        try self.expectToken(lex.Token.rparen);
-        self.nextToken();
+        try self.consumeToken(lex.Token.rparen);
 
         const body = try self.parseBlock();
 
-        try self.expectToken(.semicolon);
-        self.nextToken();
+        try self.consumeToken(.semicolon);
 
         return ast.FunctionStatement{
             .identifier = ident,
@@ -339,8 +421,7 @@ pub const Parser = struct {
     pub fn parseReturnStatement(self: *Self) ParseErrorKind!ast.ReturnStatement {
         self.nextToken();
         const expr = try self.parseExpression();
-        try self.expectToken(.semicolon);
-        self.nextToken();
+        try self.consumeToken(.semicolon);
 
         return ast.ReturnStatement{
             .value = expr,
@@ -355,15 +436,8 @@ pub const Parser = struct {
 
         const ident = try self.parseIdentifier();
 
-        if (!self.expectInfixOperator(ast.InfixOperator.equal)) {
-            return self.newError(
-                self.newError(ParseErrorKind.AssignmentExpected, "", .{}),
-                "",
-                .{},
-            );
-        } else {
-            self.nextToken();
-        }
+        try self.expectInfixOperator(ast.InfixOperator.equal);
+        self.nextToken();
 
         const res = ast.LetStatement{
             .identifier = ident,
@@ -371,8 +445,7 @@ pub const Parser = struct {
             .mutable = mutable,
         };
 
-        try self.expectToken(.semicolon);
-        self.nextToken();
+        try self.consumeToken(.semicolon);
 
         return res;
     }
@@ -384,14 +457,17 @@ pub const Parser = struct {
 
         const token: ast.Expression = switch (self.curr_token) {
             .integer => |val| .{
-                .integer_literal = std.fmt.parseInt(i64, val, 10) catch {
-                    return self.newError(ParseErrorKind.InvalidInteger, "", .{});
-                },
+                .integer_literal = val,
             },
 
             .keyword => |val| switch (val) {
                 .true_token => .{ .boolean = true },
                 .false_token => .{ .boolean = false },
+                .match => {
+                    const expr = self.alloc.create(ast.MatchExpression) catch @panic("unable to allocate");
+                    expr.* = try self.parseMatchExpression();
+                    return .{ .match = expr };
+                },
                 else => return self.newError(ParseErrorKind.IllegalKeyword, "", .{}),
             },
 
@@ -420,7 +496,7 @@ pub const Parser = struct {
         };
 
         self.nextToken();
-        if (self.curr_token == .semicolon) return token;
+        if (self.curr_token == .semicolon or self.curr_token == .lsquirly) return token;
 
         _ = self.scanInfixOperator() catch return token;
         return .{
@@ -429,8 +505,7 @@ pub const Parser = struct {
     }
 
     pub fn parseGroupedExpression(self: *Self) ParseErrorKind!ast.GroupedExpression {
-        try self.expectToken(.lparen);
-        self.nextToken();
+        try self.consumeToken(.lparen);
         const expr = try self.parseExpression();
 
         try self.expectToken(.rparen);
@@ -462,37 +537,41 @@ pub const Parser = struct {
         return expr;
     }
 
-    pub fn printDebug(self: *Self, message: []const u8, print_position: bool) void {
-        if (print_position) {
-            var iter = std.mem.splitSequence(u8, self.lexer.content, "\n");
-            var number: u32 = 0;
-            while (iter.next()) |line| {
-                number += 1;
-                if (self.lexer.line + 1 == number) {
-                    const linenumber = std.fmt.allocPrint(self.alloc, "{d}: ", .{number}) catch unreachable;
-                    std.debug.print("{s}{s}\n", .{ linenumber, line });
-                    const padding = utils.repeatString(self.alloc, " ", line.len + linenumber.len - 1) catch unreachable;
-                    std.debug.print("{s}^\n", .{padding});
-                }
+    pub fn printPosition(self: *Self, line: usize, column: usize) void {
+        var iter = std.mem.splitSequence(u8, self.lexer.content, "\n");
+        var i: u32 = 0;
+        while (iter.next()) |content| {
+            if (line == i) {
+                const linenumber = std.fmt.allocPrint(self.alloc, "{d}: ", .{i + 1}) catch unreachable;
+                const extra_padding = linenumber.len - 1 + column;
+                std.debug.print("{s}{s}\n", .{ linenumber, content });
+                const padding = utils.repeatString(self.alloc, " ", extra_padding) catch unreachable;
+                std.debug.print("{s}^\n", .{padding});
             }
+            i += 1;
         }
+    }
+
+    pub fn printDebug(self: *Self, message: []const u8, print_errors: bool) void {
         std.debug.print("{s}: curr_token: {any} peek_token: {any}\n", .{
             message,
             self.curr_token,
             self.peek_token,
         });
 
-        for (self.errors.items) |err| {
-            std.debug.print("error: {any} at line {d}\n{s}\n", .{
-                err.kind,
-                err.line,
-                err.message,
-            });
+        if (print_errors) {
+            for (self.errors.items) |err| {
+                std.debug.print("error: {any} at {d}:{d}\n{s}\n", .{
+                    err.kind,
+                    err.line + 1,
+                    err.column + 1,
+                    err.message,
+                });
+                self.printPosition(err.line, err.column);
+            }
         }
     }
 };
-
-const assertEq = std.testing.expectEqualDeep;
 
 fn expectEqualAst(content: []const u8, expected: []const u8) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -666,6 +745,37 @@ test "Parse - function call" {
         \\        .identifier: "greet"
         \\        .arguments:
         \\          .string_literal: "bob"
+        \\    .mutable: false
+    );
+}
+
+test "Parse - match expression" {
+    try expectEqualAst(
+        \\let age_group = match 5 {
+        \\  0..10 -> "teens",
+        \\  10..20 -> "twenties",
+        \\};
+    ,
+        \\.statement:
+        \\  .let:
+        \\    .identifier: "age_group"
+        \\    .value:
+        \\      .match:
+        \\        .value:
+        \\          .integer_literal: 5
+        \\        .arms:
+        \\          .pattern:
+        \\            .integer_range:
+        \\              .from: 0
+        \\              .to: 10
+        \\          .consequence:
+        \\            .string_literal: "teens"
+        \\          .pattern:
+        \\            .integer_range:
+        \\              .from: 10
+        \\              .to: 20
+        \\          .consequence:
+        \\            .string_literal: "twenties"
         \\    .mutable: false
     );
 }

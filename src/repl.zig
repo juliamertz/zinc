@@ -1,5 +1,4 @@
 const std = @import("std");
-const pretty = @import("pretty");
 const utils = @import("utils.zig");
 
 const lex = @import("lexer.zig");
@@ -26,13 +25,7 @@ pub fn run(alloc: std.mem.Allocator, interpreter: *interp.Interpreter, content: 
         std.process.exit(1);
     };
 
-    try pretty.printWriter(alloc, std.io.getStdErr().writer(), nodes, .{
-        .print_extra_empty_line = true,
-        .max_depth = std.math.maxInt(u8),
-        .ptr_skip_dup_unfold = false,
-        .show_type_names = false,
-    });
-
+    try utils.printAst(alloc, nodes);
     try interpreter.evaluate(nodes);
 }
 

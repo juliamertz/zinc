@@ -1,5 +1,7 @@
 let a= 100;
 
+let mygroup = 10 + (2 * 3);
+
 -- greet the user
 func greet(name) {
   let msg = "hello there " .. name;
