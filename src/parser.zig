@@ -57,7 +57,7 @@ pub const Parser = struct {
         const err = ParseError{
             .kind = kind,
             .message = std.fmt.allocPrint(self.alloc, msg, args) catch "failed to print message??",
-            .line = self.lexer.position,
+            .line = self.lexer.line + 1,
         };
         self.errors.append(err) catch @panic("unable to allocate for ParseError");
         return kind;
@@ -84,7 +84,6 @@ pub const Parser = struct {
 
     fn expectToken(self: *Self, expected: lex.Token) !void {
         if (eql(self.curr_token, expected)) {
-            self.nextToken();
             return;
         }
 
@@ -101,8 +100,10 @@ pub const Parser = struct {
             .ident => return {
                 const ident = try self.parseIdentifier();
                 try self.expectToken(.equal);
+                self.nextToken();
                 const expr = try self.parseExpression();
                 try self.expectToken(.semicolon);
+                self.nextToken();
 
                 return .{
                     .statement = .{
@@ -140,8 +141,10 @@ pub const Parser = struct {
 
     pub fn parseBlock(self: *Self) ParseErrorKind!ast.Block {
         try self.expectToken(.lsquirly);
+        self.nextToken();
         const nodes = try self.parseNodes();
         try self.expectToken(.rsquirly);
+        self.nextToken();
         return .{ .nodes = nodes };
     }
 
@@ -260,13 +263,6 @@ pub const Parser = struct {
             else => return self.newError(ParseErrorKind.InvalidToken, "", .{}),
         };
 
-        if (self.curr_token != lex.Token.semicolon) {
-            if (self.curr_token == lex.Token.eof) {
-                return statement;
-            }
-            return self.newError(ParseErrorKind.SemicolonExpected, "", .{});
-        } else self.nextToken();
-
         return statement;
     }
 
@@ -287,15 +283,15 @@ pub const Parser = struct {
         return ast.IfStatement{
             .condition = try self.parseExpression(),
             .consequence = try self.parseBlock(),
-            .alternative = self.parseOptionalElseStatement() catch null, // TODO:
+            .alternative = self.parseOptionalElseStatement() catch null, // FIX: legitemate errors while parsing else statements are ignored 
         };
     }
 
     pub fn parseFunctionCallExpression(self: *Self, ident: []const u8) ParseErrorKind!ast.FunctionCall {
         var arguments = Array(ast.Expression).init(self.alloc);
-
         self.nextToken();
         try self.expectToken(.lparen);
+        self.nextToken();
 
         while (!eql(self.curr_token, .rparen)) {
             const arg = try self.parseExpression();
@@ -317,14 +313,21 @@ pub const Parser = struct {
 
         // arguments
         try self.expectToken(lex.Token.lparen);
+        self.nextToken();
+
         var arguments = Array(ast.FunctionArgument).init(self.alloc);
         while (!eql(self.curr_token, .rparen)) {
             const arg = try self.parseFunctionArgument();
             arguments.append(arg) catch @panic("unable to append");
         }
+
         try self.expectToken(lex.Token.rparen);
+        self.nextToken();
 
         const body = try self.parseBlock();
+
+        try self.expectToken(.semicolon);
+        self.nextToken();
 
         return ast.FunctionStatement{
             .identifier = ident,
@@ -335,9 +338,12 @@ pub const Parser = struct {
 
     pub fn parseReturnStatement(self: *Self) ParseErrorKind!ast.ReturnStatement {
         self.nextToken();
+        const expr = try self.parseExpression();
+        try self.expectToken(.semicolon);
+        self.nextToken();
 
         return ast.ReturnStatement{
-            .value = try self.parseExpression(),
+            .value = expr,
         };
     }
 
@@ -350,7 +356,11 @@ pub const Parser = struct {
         const ident = try self.parseIdentifier();
 
         if (!self.expectInfixOperator(ast.InfixOperator.equal)) {
-            return self.newError(self.newError(ParseErrorKind.AssignmentExpected, "", .{}), "", .{});
+            return self.newError(
+                self.newError(ParseErrorKind.AssignmentExpected, "", .{}),
+                "",
+                .{},
+            );
         } else {
             self.nextToken();
         }
@@ -360,6 +370,9 @@ pub const Parser = struct {
             .value = try self.parseExpression(),
             .mutable = mutable,
         };
+
+        try self.expectToken(.semicolon);
+        self.nextToken();
 
         return res;
     }
@@ -408,8 +421,8 @@ pub const Parser = struct {
 
         self.nextToken();
         if (self.curr_token == .semicolon) return token;
-        _ = self.scanInfixOperator() catch return token;
 
+        _ = self.scanInfixOperator() catch return token;
         return .{
             .infix_operator = try self.parseInfixBinaryExpression(token),
         };
@@ -417,7 +430,9 @@ pub const Parser = struct {
 
     pub fn parseGroupedExpression(self: *Self) ParseErrorKind!ast.GroupedExpression {
         try self.expectToken(.lparen);
+        self.nextToken();
         const expr = try self.parseExpression();
+
         try self.expectToken(.rparen);
         return .{ .expression = expr };
     }
@@ -480,11 +495,11 @@ pub const Parser = struct {
 const assertEq = std.testing.expectEqualDeep;
 
 fn expectEqualAst(content: []const u8, expected: []const u8) !void {
-    // var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     const alloc = arena.allocator();
 
     var parser = Parser.new(content, alloc);
+    defer arena.deinit();
     const nodes = try parser.parseNodes();
 
     const pretty = @import("pretty");
@@ -502,8 +517,6 @@ fn expectEqualAst(content: []const u8, expected: []const u8) !void {
         try file.writeAll(trimmed);
         return err;
     };
-
-    arena.deinit();
 }
 
 test "Parse - let statements" {
@@ -597,7 +610,7 @@ test "Parse - conditionals" {
     try expectEqualAst(
         \\if 100 > 50 {
         \\  let a = "bigger";
-        \\};
+        \\}
     ,
         \\.statement:
         \\  .if_else:
@@ -617,5 +630,42 @@ test "Parse - conditionals" {
         \\              .string_literal: "bigger"
         \\            .mutable: false
         \\    .alternative: null
+    );
+}
+
+test "Parse - grouped expressions" {
+    try expectEqualAst("let mygroup = 10 - (2 * 5);",
+        \\.statement:
+        \\  .let:
+        \\    .identifier: "mygroup"
+        \\    .value:
+        \\      .infix_operator:
+        \\        .left:
+        \\          .integer_literal: 10
+        \\        .operator: .subtract
+        \\        .right:
+        \\          .grouped_expression:
+        \\            .expression:
+        \\              .infix_operator:
+        \\                .left:
+        \\                  .integer_literal: 2
+        \\                .operator: .multiply
+        \\                .right:
+        \\                  .integer_literal: 5
+        \\    .mutable: false
+    );
+}
+
+test "Parse - function call" {
+    try expectEqualAst("let greeting = greet(\"bob\");",
+        \\.statement:
+        \\  .let:
+        \\    .identifier: "greeting"
+        \\    .value:
+        \\      .function_call:
+        \\        .identifier: "greet"
+        \\        .arguments:
+        \\          .string_literal: "bob"
+        \\    .mutable: false
     );
 }

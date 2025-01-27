@@ -35,8 +35,8 @@
           zigDisableWrap = false;
         };
 
-        apps.build = env.app [ ] ''zig build "$@"'';
-        apps.default = env.app [ ] ''zig build run -- "$@"'';
+        apps.build = env.app [ ] ''zig build --prominent-compile-errors "$@"'';
+        apps.default = env.app [ ] ''zig build run --prominent-compile-errors -- "$@"'';
         apps.test = env.app [ ] ''zig build test'';
 
         # nix develop

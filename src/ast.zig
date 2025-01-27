@@ -94,14 +94,16 @@ pub const PrefixOperator = enum {
     minus,
 };
 
-pub const InfixOperator = enum {
+// TODO: do we need to define precedence explicitly?
+pub const InfixOperator = enum(u8) {
+    equal = 0,
+    assign,
+
     add,
     subtract,
     multiply,
     divide,
 
-    assign,
-    equal,
     not_equal,
     less_than_or_eq,
     less_than,
