@@ -271,6 +271,16 @@ pub const Parser = struct {
         return operator;
     }
 
+    fn parseIndexExpression(self: *Self, value: ast.Expression) ParseErrorKind!ast.IndexExpression {
+        try self.consumeToken(.lbracket);
+        const index = try self.parseExpression();
+        try self.consumeToken(.rbracket);
+        return ast.IndexExpression{
+            .index = index,
+            .value = value,
+        };
+    }
+
     pub fn parseStatement(self: *Self) ParseErrorKind!ast.Statement {
         const statement: ast.Statement = switch (self.curr_token) {
             .keyword => |kw| switch (kw) {
@@ -493,7 +503,7 @@ pub const Parser = struct {
             return .{ .prefix_operator = try self.parsePrefixBinaryExpression(operator) };
         }
 
-        const token: ast.Expression = switch (self.curr_token) {
+        const expr: ast.Expression = switch (self.curr_token) {
             .integer => |val| .{
                 .integer_literal = val,
             },
@@ -528,24 +538,47 @@ pub const Parser = struct {
                 break :blk .{ .grouped_expression = expr };
             },
 
+            .lbracket => .{ .list = try self.parseListExpression() },
+
             .eof => unreachable,
 
             else => return self.newError(ParseErrorKind.ExpressionExpected, "", .{}),
         };
 
         self.nextToken();
-        if (self.curr_token == .semicolon or self.curr_token == .lsquirly) return token;
 
-        _ = self.scanInfixOperator() catch return token;
+        if (self.curr_token == .lbracket) {
+            const index_expr = self.alloc.create(ast.IndexExpression) catch @panic("unable to allocate");
+            index_expr.* = try self.parseIndexExpression(expr);
+
+            return .{ .index = index_expr };
+        }
+
+        if (self.curr_token == .semicolon or self.curr_token == .lsquirly) return expr;
+
+        _ = self.scanInfixOperator() catch return expr;
         return .{
-            .infix_operator = try self.parseInfixBinaryExpression(token),
+            .infix_operator = try self.parseInfixBinaryExpression(expr),
         };
+    }
+
+    pub fn parseListExpression(self: *Self) ParseErrorKind![]ast.Expression {
+        try self.consumeToken(.lbracket);
+
+        var expressions = Array(ast.Expression).init(self.alloc);
+        while (self.curr_token != .rbracket) {
+            const e = try self.parseExpression();
+            expressions.append(e) catch @panic("unable to append pattern");
+            if (self.curr_token == .comma) self.nextToken(); // TODO: nice error if comma is missing between items
+        }
+
+        try self.expectToken(.rbracket);
+        return expressions.items;
     }
 
     pub fn parseGroupedExpression(self: *Self) ParseErrorKind!ast.GroupedExpression {
         try self.consumeToken(.lparen);
         const expr = try self.parseExpression();
-
         try self.expectToken(.rparen);
         return .{ .expression = expr };
     }

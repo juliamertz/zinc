@@ -1,7 +1,19 @@
 -- greet the user
-func greet(name) {
-  let msg = "hello there " + name;
-  return msg;
-};
+-- func greet(name) {
+--   let msg = "hello there " + name;
+--   return msg;
+-- };
+-- 
+-- let message = greet("julia");
 
-let message = greet("julia");
+let temp = 0;
+let mut items = [
+    temp,
+    10,
+    20,
+    30,
+    "other"
+];
+
+let item = items[2];
+let other = ["some", "none"][0];

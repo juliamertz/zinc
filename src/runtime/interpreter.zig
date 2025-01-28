@@ -129,7 +129,6 @@ pub const Interpreter = struct {
             },
             .boolean => |val| .{ .boolean = val },
             .string_literal => |val| .{ .string = val },
-            .match => @panic("todo"),
             .function_call => |func| {
                 if (scope.variables.get(func.identifier)) |ptr| {
                     const func_ptr: ast.FunctionStatement = switch (ptr) {
@@ -153,6 +152,8 @@ pub const Interpreter = struct {
             .grouped_expression => |group| {
                 return try self.evaluateExpression(group.expression, scope);
             },
+
+            else => @panic("todo"),
         };
     }
 

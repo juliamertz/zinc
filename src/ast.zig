@@ -21,14 +21,16 @@ pub const Statement = union(enum) {
 
 pub const Expression = union(enum) {
     grouped_expression: *GroupedExpression,
-    infix_operator: *InfixBinaryExpression,
     prefix_operator: *PrefixBinaryExpression,
+    infix_operator: *InfixBinaryExpression,
+    index: *IndexExpression,
     integer_literal: i64,
     identifier: []const u8,
     function_call: *FunctionCall,
     match: *MatchExpression,
     string_literal: []const u8,
     boolean: bool,
+    list: []Expression,
 };
 
 pub const GroupedExpression = struct {
@@ -88,6 +90,11 @@ pub const FunctionCall = struct {
     arguments: []Expression,
 };
 
+// pub const ForStatement = struct {
+//     identifiers: [][]const u8,
+//     value: Expression,
+// };
+
 pub const ReturnStatement = struct {
     value: Expression,
 };
@@ -108,9 +115,13 @@ pub const PrefixOperator = enum {
     minus,
 };
 
-// TODO: do we need to define precedence explicitly?
-pub const InfixOperator = enum(u8) {
-    equal = 0,
+pub const IndexExpression = struct {
+    value: Expression,
+    index: Expression,
+};
+
+pub const InfixOperator = enum {
+    equal,
     assign,
 
     range,
