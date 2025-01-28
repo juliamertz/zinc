@@ -1,4 +1,6 @@
 let age_group = match 5 {
   0..10 -> "teens",
-  10..20 -> "twenties",
+  10..20 | 20..40 -> "ten-to-forty",
+  18|19 -> "eighteen-or-nineteen",
+  else -> "old",
 };

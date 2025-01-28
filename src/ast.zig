@@ -52,14 +52,14 @@ pub const IfStatement = struct {
     alternative: ?Block,
 };
 
-pub const MatchArm = struct {
-    pattern: Pattern, // TODO: actual pattern parsing
-    consequence: Expression,
-};
-
 pub const MatchExpression = struct {
     value: Expression,
     arms: []MatchArm,
+};
+
+pub const MatchArm = struct {
+    patterns: []Pattern,
+    consequence: Expression,
 };
 
 pub const IntegerRange = struct {
@@ -69,6 +69,8 @@ pub const IntegerRange = struct {
 
 pub const Pattern = union(enum) {
     integer_range: IntegerRange,
+    integer_literal: i64,
+    catch_all,
 };
 
 pub const FunctionArgument = struct {

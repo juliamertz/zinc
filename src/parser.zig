@@ -5,6 +5,7 @@ const lex = @import("lexer.zig");
 
 const Array = std.ArrayList;
 const eql = std.meta.eql;
+const debug = std.debug.print; // TODO: remove thi
 
 pub const ParseErrorKind = error{
     IdentifierExpected,
@@ -130,6 +131,7 @@ pub const Parser = struct {
                     },
                 };
             },
+
             else => {},
         }
 
@@ -301,7 +303,7 @@ pub const Parser = struct {
         return ast.IfStatement{
             .condition = try self.parseExpression(),
             .consequence = try self.parseBlock(),
-            .alternative = self.parseOptionalElseStatement() catch null, // FIX: legitemate errors while parsing else statements are ignored
+            .alternative = self.parseOptionalElseStatement() catch null, // FIX: legitimate errors while parsing else statements are ignored
         };
     }
 
@@ -325,7 +327,9 @@ pub const Parser = struct {
     }
 
     pub fn parseMatchArm(self: *Self) ParseErrorKind!ast.MatchArm {
-        const pattern = try self.parseMatchPattern();
+        const patterns = try self.parseMatchPatterns();
+
+        // '->' to indicate end of patterns
         try self.consumeToken(.minus);
         try self.consumeToken(.rangle);
 
@@ -333,7 +337,7 @@ pub const Parser = struct {
         try self.consumeToken(.comma);
 
         const arm = ast.MatchArm{
-            .pattern = pattern,
+            .patterns = patterns,
             .consequence = expr,
         };
         return arm;
@@ -341,12 +345,31 @@ pub const Parser = struct {
 
     pub fn parseMatchPattern(self: *Self) ParseErrorKind!ast.Pattern {
         switch (self.curr_token) {
+            .keyword => |kw| switch (kw) {
+                .else_token => {
+                    debug("catch all found", .{});
+                    self.nextToken();
+                    return .{ .catch_all = {} };
+                },
+                else => return self.newError(
+                    ParseErrorKind.IllegalKeyword,
+                    "Only the 'else' keyword is allowed as a match pattern, found: {}",
+                    .{kw},
+                ),
+            },
+            // .string_literal => |val| {
+            // },
             .integer => |val| {
-                const from = val;
                 self.nextToken();
+
+                if (self.curr_token != .dot) {
+                    return .{ .integer_literal = val };
+                }
+
                 try self.expectInfixOperator(.range);
                 self.nextToken();
                 self.nextToken();
+
                 const to = switch (self.curr_token) {
                     .integer => |rval| rval,
                     else => return self.newError(
@@ -359,7 +382,7 @@ pub const Parser = struct {
 
                 return .{
                     .integer_range = ast.IntegerRange{
-                        .from = from,
+                        .from = val,
                         .to = to,
                     },
                 };
@@ -371,6 +394,21 @@ pub const Parser = struct {
                 .{},
             ),
         }
+    }
+
+    pub fn parseMatchPatterns(self: *Self) ParseErrorKind![]ast.Pattern {
+        var patterns = Array(ast.Pattern).init(self.alloc);
+
+        const pattern = try self.parseMatchPattern();
+        patterns.append(pattern) catch @panic("unable to append pattern");
+
+        while (self.curr_token == .pipe) {
+            self.nextToken();
+            const p = try self.parseMatchPattern();
+            patterns.append(p) catch @panic("unable to append pattern");
+        }
+
+        return patterns.items;
     }
 
     pub fn parseFunctionCallExpression(self: *Self, ident: []const u8) ParseErrorKind!ast.FunctionCall {

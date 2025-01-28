@@ -1,3 +1,9 @@
+# nix artifacts
 result
+
+# zig artifacts
 .zig-cache
 zig-out
+
+# output from failed test
+actual
