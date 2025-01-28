@@ -835,13 +835,13 @@ test "Parse - match expression" {
         \\        .value:
         \\          .integer_literal: 5
         \\        .arms:
-        \\          .pattern:
+        \\          .patterns:
         \\            .integer_range:
         \\              .from: 0
         \\              .to: 10
         \\          .consequence:
         \\            .string_literal: "teens"
-        \\          .pattern:
+        \\          .patterns:
         \\            .integer_range:
         \\              .from: 10
         \\              .to: 20
