@@ -35,14 +35,16 @@
           zigDisableWrap = false;
         };
 
-        apps.build = env.app [ ] ''zig build --prominent-compile-errors "$@"'';
-        apps.default = env.app [ ] ''zig build run --prominent-compile-errors -- "$@"'';
+        apps.build = env.app [ ] ''zig build "$@"'';
+        apps.default = env.app [ ] ''zig build run -- "$@"'';
         apps.test = env.app [ ] ''zig build test'';
 
         # nix develop
         devShells.default = env.mkShell {
           nativeBuildInputs = with env.pkgs; [
-            (writeShellScriptBin "run" ''zig build run -- "$@"'')
+            (writeShellScriptBin "run" ''
+              zig build run --prominent-compile-errors -- "$@"
+            '')
           ];
         };
       }

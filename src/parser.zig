@@ -357,7 +357,6 @@ pub const Parser = struct {
         switch (self.curr_token) {
             .keyword => |kw| switch (kw) {
                 .else_token => {
-                    debug("catch all found", .{});
                     self.nextToken();
                     return .{ .catch_all = {} };
                 },
@@ -367,13 +366,21 @@ pub const Parser = struct {
                     .{kw},
                 ),
             },
-            // .string_literal => |val| {
-            // },
+
+            .string_literal => |val| {
+                self.nextToken();
+                return .{
+                    .literal = .{ .string_literal = val },
+                };
+            },
+
             .integer => |val| {
                 self.nextToken();
 
                 if (self.curr_token != .dot) {
-                    return .{ .integer_literal = val };
+                    return .{
+                        .literal = .{ .integer_literal = val },
+                    };
                 }
 
                 try self.expectInfixOperator(.range);
@@ -391,9 +398,9 @@ pub const Parser = struct {
                 self.nextToken();
 
                 return .{
-                    .integer_range = ast.IntegerRange{
-                        .from = val,
-                        .to = to,
+                    .range = ast.RangePattern{
+                        .left = val,
+                        .right = to,
                     },
                 };
             },
@@ -406,7 +413,18 @@ pub const Parser = struct {
         }
     }
 
-    pub fn parseMatchPatterns(self: *Self) ParseErrorKind![]ast.Pattern {
+    // /// this is different from range patterns as patterns can only use literal numbers and no identifiers etc.
+    // fn parseRangeExpression(self: *Self, left: ast.Expression) ParseErrorKind!ast.RangeExpression {
+    //     try self.consumeToken(.dot);
+    //     try self.consumeToken(.dot);
+    //
+    //     return ast.RangeExpression{
+    //         .left = left,
+    //         .right = try self.parseExpression(),
+    //     };
+    // }
+
+    fn parseMatchPatterns(self: *Self) ParseErrorKind![]ast.Pattern {
         var patterns = Array(ast.Pattern).init(self.alloc);
 
         const pattern = try self.parseMatchPattern();

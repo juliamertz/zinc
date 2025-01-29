@@ -37,6 +37,12 @@ pub const GroupedExpression = struct {
     expression: Expression,
 };
 
+/// range holding left/right expressions of unknown type
+pub const RangeExpression = struct {
+    left: Expression,
+    right: Expression,
+};
+
 pub const AssingStatement = struct {
     identifier: []const u8,
     value: Expression,
@@ -64,17 +70,22 @@ pub const MatchArm = struct {
     consequence: Expression,
 };
 
-pub const IntegerRange = struct {
-    from: i64,
-    to: i64,
+/// range pattern with literal integer values
+pub const RangePattern = struct {
+    left: i64,
+    right: i64,
 };
 
+/// enum representing all valid pattern kinds
 pub const Pattern = union(enum) {
-    integer_range: IntegerRange,
-    integer_literal: i64,
+    range: RangePattern,
+    literal: Expression,
     catch_all,
 };
 
+pub const Identifier = []const u8;
+
+// TODO: remove this in favor if ident alias ^
 pub const FunctionArgument = struct {
     identifier: []const u8,
 };
