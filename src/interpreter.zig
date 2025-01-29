@@ -1,5 +1,5 @@
 const std = @import("std");
-const ast = @import("../ast.zig");
+const ast = @import("ast.zig");
 const values = @import("values.zig");
 
 const StringHashMap = std.StringHashMap;
@@ -114,6 +114,8 @@ pub const Interpreter = struct {
                 ) catch @panic("unable to append");
             },
             .return_ => return EvalError.IllegalReturn,
+
+            else => @panic("todo"),
         }
 
         return null;

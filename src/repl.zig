@@ -2,9 +2,10 @@ const std = @import("std");
 const utils = @import("utils.zig");
 
 const lex = @import("lexer.zig");
-const parse = @import("parser.zig");
 const ast = @import("ast.zig");
-const interp = @import("runtime/interpreter.zig");
+const interp = @import("interpreter.zig");
+
+const Parser = @import("parser.zig").Parser;
 
 fn read_input(alloc: std.mem.Allocator) !?[]const u8 {
     const stdin = std.io.getStdIn().reader();
@@ -18,7 +19,7 @@ fn read_input(alloc: std.mem.Allocator) !?[]const u8 {
 const print_trace = true;
 
 pub fn run(alloc: std.mem.Allocator, interpreter: *interp.Interpreter, content: []const u8) !void {
-    var parser = parse.Parser.new(content, alloc);
+    var parser = Parser.init(content, alloc);
     const nodes = parser.parseNodes() catch |err| {
         parser.printDebug("Parsing errors", true);
         if (print_trace) return err;

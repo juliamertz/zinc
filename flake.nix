@@ -42,8 +42,14 @@
         # nix develop
         devShells.default = env.mkShell {
           nativeBuildInputs = with env.pkgs; [
+            reflex
             (writeShellScriptBin "run" ''
               zig build run --prominent-compile-errors -- "$@"
+            '')
+            (writeShellScriptBin "watch" ''
+              run $@
+              # zig build watch flag is currently broken
+              reflex -d none --regex='^(?:.+\.zig|spec\/.*)$' run $@
             '')
           ];
         };

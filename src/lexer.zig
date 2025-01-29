@@ -10,6 +10,7 @@ pub const Keyword = enum {
 
     for_token,
     while_token,
+    in,
     and_token,
     or_token,
     pub_token,
@@ -29,6 +30,7 @@ pub const Keyword = enum {
 
             .{ "for", .for_token },
             .{ "while", .while_token },
+            .{ "in", .in },
             .{ "or", .or_token },
             .{ "and", .and_token },
             .{ "pub", .pub_token },

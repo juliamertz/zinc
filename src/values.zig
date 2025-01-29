@@ -1,5 +1,5 @@
 const std = @import("std");
-const ast = @import("../ast.zig");
+const ast = @import("ast.zig");
 
 pub const Value = union(enum) {
     string: []const u8,

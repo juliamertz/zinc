@@ -1,0 +1,7 @@
+for i, item in items {
+  let y = i * 8;
+}
+
+while true {
+  let a = 10;
+}

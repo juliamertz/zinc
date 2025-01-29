@@ -17,6 +17,8 @@ pub const Statement = union(enum) {
     return_: ReturnStatement,
     if_else: IfStatement,
     assign: AssingStatement,
+    for_loop: ForStatement,
+    while_loop: WhileStatement,
 };
 
 pub const Expression = union(enum) {
@@ -77,17 +79,17 @@ pub const RangePattern = struct {
 };
 
 /// enum representing all valid pattern kinds
+/// TODO: list matching, enum matching (when they're implemented)
 pub const Pattern = union(enum) {
     range: RangePattern,
     literal: Expression,
-    catch_all,
+    irrefutable: Identifier,
 };
 
 pub const Identifier = []const u8;
 
-// TODO: remove this in favor if ident alias ^
 pub const FunctionArgument = struct {
-    identifier: []const u8,
+    identifier: Identifier,
 };
 
 pub const FunctionStatement = struct {
@@ -101,10 +103,16 @@ pub const FunctionCall = struct {
     arguments: []Expression,
 };
 
-// pub const ForStatement = struct {
-//     identifiers: [][]const u8,
-//     value: Expression,
-// };
+pub const ForStatement = struct {
+    identifiers: [][]const u8,
+    value: Expression,
+    body: Block,
+};
+
+pub const WhileStatement = struct {
+    condition: Expression,
+    body: Block,
+};
 
 pub const ReturnStatement = struct {
     value: Expression,

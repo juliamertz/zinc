@@ -1,9 +1,10 @@
 const std = @import("std");
-const parse = @import("parser.zig");
 const utils = @import("utils.zig");
 const lex = @import("lexer.zig");
-const repl = @import("./repl.zig");
-const interp = @import("./runtime/interpreter.zig");
+const repl = @import("repl.zig");
+const interp = @import("interpreter.zig");
+
+const Parser = @import("parser.zig").Parser;
 
 const stdout = std.io.getStdOut().writer();
 
@@ -36,7 +37,7 @@ pub fn main() !void {
             const content = try std.fs.cwd().readFileAlloc(arena.allocator(), filepath, max);
             try stdout.print("content:\n\n{s}\n", .{content});
 
-            var parser = parse.Parser.new(content, arena.allocator());
+            var parser = Parser.init(content, arena.allocator());
             const nodes = parser.parseNodes() catch |err| {
                 parser.printDebug("Parsing errors", true);
                 return err;

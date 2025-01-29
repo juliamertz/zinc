@@ -5,9 +5,9 @@ const lex = @import("lexer.zig");
 
 const Array = std.ArrayList;
 const eql = std.meta.eql;
-const debug = std.debug.print; // TODO: remove thi
+const debug = std.debug.print; // TODO: remove this
 
-pub const ParseErrorKind = error{
+pub const ErrorKind = error{
     IdentifierExpected,
     AssignmentExpected,
     SemicolonExpected,
@@ -24,7 +24,7 @@ pub const ParseErrorKind = error{
 };
 
 pub const ParseError = struct {
-    kind: ParseErrorKind,
+    kind: ErrorKind,
     line: usize,
     column: usize,
     message: []const u8,
@@ -40,22 +40,23 @@ pub const Parser = struct {
 
     const Self = @This();
 
-    pub fn new(content: []const u8, alloc: std.mem.Allocator) Self {
+    pub fn init(content: []const u8, alloc: std.mem.Allocator) Self {
         var lexer = lex.Lexer.new(content);
         const curr = lexer.readToken();
         lexer.advance();
-        const next = lexer.readToken();
+        const peek = lexer.readToken();
 
         return Parser{
             .lexer = lexer,
             .errors = Array(ParseError).init(alloc),
             .alloc = alloc,
             .curr_token = curr,
-            .peek_token = next,
+            .peek_token = peek,
         };
     }
 
-    pub fn newError(self: *Self, kind: ParseErrorKind, comptime msg: []const u8, args: anytype) ParseErrorKind {
+    /// Append error message to self.errors
+    fn errorMessage(self: *Self, kind: ErrorKind, comptime msg: []const u8, args: anytype) ErrorKind {
         const err = ParseError{
             .kind = kind,
             .message = std.fmt.allocPrint(self.alloc, msg, args) catch "failed to print message??",
@@ -66,54 +67,76 @@ pub const Parser = struct {
         return kind;
     }
 
-    pub fn nextToken(self: *Self) void {
+    /// Advance to the next token in the lexer
+    fn next(self: *Self) void {
         self.curr_token = self.peek_token;
         self.lexer.advance();
         self.peek_token = self.lexer.readToken();
     }
 
-    fn expectInfixOperator(self: *Self, expected: ast.InfixOperator) ParseErrorKind!void {
-        const operator = self.scanInfixOperator() catch |err| {
-            return self.newError(
-                err,
-                "expected an infix operator got: {any}",
-                .{self.curr_token},
-            );
-        };
+    /// Check if the current token is equal to passed in infix operator
+    /// throws an error if it does not match
+    fn expectInfixOperator(self: *Self, expected: ast.InfixOperator) ErrorKind!void {
+        const operator = try self.scanInfixOperator();
 
         if (operator != expected) {
-            return self.newError(
-                ParseErrorKind.InvalidToken, // TODO: InvalidOperator
+            return self.errorMessage(
+                ErrorKind.InvalidToken, // TODO: InvalidOperator
                 "invalid operator expected: {any}, got: {any}",
                 .{ expected, operator },
             );
         }
     }
 
-    fn expectKeyword(self: *Self, expected: lex.Keyword) ParseErrorKind!void {
+    /// Check if current token is equal to passed in keyword
+    /// throws an error if it does not match
+    fn expectKeyword(self: *Self, expected: lex.Keyword) ErrorKind!void {
         if (!eql(self.curr_token, .{ .keyword = expected })) {
-            return ParseErrorKind.InvalidToken;
-        } else self.nextToken();
+            return ErrorKind.InvalidToken;
+        }
     }
 
+    /// Check if current token is equal to passed in token
+    /// throws an error if it does not match
     fn expectToken(self: *Self, expected: lex.Token) !void {
         if (eql(self.curr_token, expected)) {
             return;
         }
 
-        return self.newError(
+        return self.errorMessage(
             error.InvalidToken,
             "expected next token to be {any}, got {any} instead",
             .{ expected, self.curr_token },
         );
     }
 
+    /// Check if current token is equal to passed in token, then advance.
+    /// throws an error if it does not match
     fn consumeToken(self: *Self, expected: lex.Token) !void {
         try self.expectToken(expected);
-        self.nextToken();
+        self.next();
     }
 
-    pub fn parseNode(self: *Self) ParseErrorKind!ast.Node {
+    /// Parse nodes and accumulate into an `ArrayList`
+    /// This will attempt to parse until `eof` is reached.
+    pub fn parseNodes(self: *Self) ErrorKind![]ast.Node {
+        var nodes = Array(ast.Node).init(self.alloc);
+
+        while (!eql(self.curr_token, .eof)) {
+            const node = self.parseNode() catch |err| {
+                if (err == ErrorKind.ExpressionExpected and
+                    eql(self.curr_token, .rsquirly)) break;
+
+                return err;
+            };
+
+            nodes.append(node) catch @panic("unable to append");
+        }
+
+        return nodes.items;
+    }
+
+    fn parseNode(self: *Self) ErrorKind!ast.Node {
         switch (self.curr_token) {
             .keyword => return .{ .statement = try self.parseStatement() },
             .ident => return {
@@ -138,40 +161,22 @@ pub const Parser = struct {
         return .{ .expression = try self.parseExpression() };
     }
 
-    pub fn parseNodes(self: *Self) ParseErrorKind![]ast.Node {
-        var nodes = Array(ast.Node).init(self.alloc);
-
-        while (!eql(self.curr_token, .eof)) {
-            const node = self.parseNode() catch |err| {
-                if (err == ParseErrorKind.ExpressionExpected and
-                    eql(self.curr_token, .rsquirly))
-                {
-                    break;
-                }
-                return err;
-            };
-
-            nodes.append(node) catch @panic("unable to append");
-        }
-
-        return nodes.items;
-    }
-
-    pub fn parseBlock(self: *Self) ParseErrorKind!ast.Block {
+    /// Parse block expression including surrounding curly braces
+    fn parseBlock(self: *Self) ErrorKind!ast.Block {
         try self.consumeToken(.lsquirly);
         const nodes = try self.parseNodes();
         try self.consumeToken(.rsquirly);
         return .{ .nodes = nodes };
     }
 
-    fn parseIdentifier(self: *Self) ParseErrorKind![]const u8 {
+    fn parseIdentifier(self: *Self) ErrorKind![]const u8 {
         const ident: []const u8 = switch (self.curr_token) {
             .ident => |val| blk: {
-                self.nextToken();
+                self.next();
                 break :blk val;
             },
 
-            else => return self.newError(
+            else => return self.errorMessage(
                 error.IdentifierExpected,
                 "expected next to be token to be an identifier, got {any}",
                 .{self.curr_token},
@@ -181,23 +186,23 @@ pub const Parser = struct {
         return ident;
     }
 
-    fn parseIntegerLiteral(self: *Self) ParseErrorKind!i64 {
+    fn parseIntegerLiteral(self: *Self) ErrorKind!i64 {
         const int = switch (self.curr_token) {
             .integer => |val| std.fmt.parseInt(i64, val, 10) catch {
-                return self.newError(
+                return self.errorMessage(
                     error.InvalidInteger,
                     "expected next token to be a valid integer, got {any}",
                     .{self.curr_token},
                 );
             },
-            else => self.newError(
+            else => self.errorMessage(
                 error.IntegerExpected,
                 "expected next token to be an integer, got {any}",
                 .{self.curr_token},
             ),
         };
 
-        self.nextToken();
+        self.next();
         return int;
     }
 
@@ -209,7 +214,7 @@ pub const Parser = struct {
         };
     }
 
-    fn scanInfixOperator(self: *Self) ParseErrorKind!ast.InfixOperator {
+    fn scanInfixOperator(self: *Self) ErrorKind!ast.InfixOperator {
         return switch (self.curr_token) {
             .equal => .equal,
             .plus => .add,
@@ -220,8 +225,8 @@ pub const Parser = struct {
                 if (eql(self.peek_token, .dot)) {
                     break :blk .range;
                 }
-                return self.newError(
-                    ParseErrorKind.OperatorExpected,
+                return self.errorMessage(
+                    ErrorKind.OperatorExpected,
                     "use .. for range operator",
                     .{},
                 );
@@ -241,37 +246,37 @@ pub const Parser = struct {
             .keyword => |val| switch (val) {
                 .and_token => .and_operator,
                 .or_token => .or_operator,
-                else => return self.newError(
+                else => return self.errorMessage(
                     error.IllegalKeyword,
                     "The keyword {any} is not allowed here",
                     .{val},
                 ),
             },
-            else => return self.newError(
-                ParseErrorKind.OperatorExpected,
+            else => return self.errorMessage(
+                ErrorKind.OperatorExpected,
                 "Operator expected, found {any}",
                 .{self.curr_token},
             ),
         };
     }
 
-    fn parseInfixOperator(self: *Self) ParseErrorKind!ast.InfixOperator {
+    fn parseInfixOperator(self: *Self) ErrorKind!ast.InfixOperator {
         const operator = try self.scanInfixOperator();
         switch (operator) {
-            .less_than_or_eq, .greater_than_or_eq, .range => self.nextToken(),
+            .less_than_or_eq, .greater_than_or_eq, .range => self.next(),
             else => {},
         }
-        self.nextToken();
+        self.next();
         return operator;
     }
 
-    fn parsePrefixOperator(self: *Self) ParseErrorKind!ast.PrefixOperator {
+    fn parsePrefixOperator(self: *Self) ErrorKind!ast.PrefixOperator {
         const operator = try self.scanPrefixOperator();
-        self.nextToken();
+        self.next();
         return operator;
     }
 
-    fn parseIndexExpression(self: *Self, value: ast.Expression) ParseErrorKind!ast.IndexExpression {
+    fn parseIndexExpression(self: *Self, value: ast.Expression) ErrorKind!ast.IndexExpression {
         try self.consumeToken(.lbracket);
         const index = try self.parseExpression();
         try self.consumeToken(.rbracket);
@@ -281,34 +286,37 @@ pub const Parser = struct {
         };
     }
 
-    pub fn parseStatement(self: *Self) ParseErrorKind!ast.Statement {
+    fn parseStatement(self: *Self) ErrorKind!ast.Statement {
         const statement: ast.Statement = switch (self.curr_token) {
             .keyword => |kw| switch (kw) {
                 .let => .{ .let = try self.parseLetStatement() },
                 .return_token => .{ .return_ = try self.parseReturnStatement() },
                 .function => .{ .function = try self.parseFunctionStatement() },
                 .if_token => .{ .if_else = try self.parseIfElseStatement() },
-                else => return self.newError(ParseErrorKind.InvalidToken, "", .{}),
+                .for_token => .{ .for_loop = try self.parseForStatement() },
+                .while_token => .{ .while_loop = try self.parseWhileStatement() },
+                else => return self.errorMessage(ErrorKind.InvalidToken, "", .{}),
             },
-            else => return self.newError(ParseErrorKind.InvalidToken, "", .{}),
+            else => return self.errorMessage(ErrorKind.InvalidToken, "", .{}),
         };
 
         return statement;
     }
 
-    pub fn parseFunctionArgument(self: *Self) ParseErrorKind!ast.FunctionArgument {
+    fn parseFunctionArgument(self: *Self) ErrorKind!ast.FunctionArgument {
         return ast.FunctionArgument{
             .identifier = try self.parseIdentifier(),
         };
     }
 
-    fn parseOptionalElseStatement(self: *Self) ParseErrorKind!?ast.Block {
+    fn parseOptionalElseStatement(self: *Self) ErrorKind!?ast.Block {
         try self.expectKeyword(.else_token);
+        self.next();
         return try self.parseBlock();
     }
 
-    pub fn parseIfElseStatement(self: *Self) ParseErrorKind!ast.IfStatement {
-        self.nextToken();
+    fn parseIfElseStatement(self: *Self) ErrorKind!ast.IfStatement {
+        self.next();
 
         return ast.IfStatement{
             .condition = try self.parseExpression(),
@@ -317,8 +325,8 @@ pub const Parser = struct {
         };
     }
 
-    pub fn parseMatchExpression(self: *Self) ParseErrorKind!ast.MatchExpression {
-        self.nextToken();
+    fn parseMatchExpression(self: *Self) ErrorKind!ast.MatchExpression {
+        self.next();
         const value = try self.parseExpression();
         try self.consumeToken(.lsquirly);
 
@@ -336,7 +344,7 @@ pub const Parser = struct {
         };
     }
 
-    pub fn parseMatchArm(self: *Self) ParseErrorKind!ast.MatchArm {
+    fn parseMatchArm(self: *Self) ErrorKind!ast.MatchArm {
         const patterns = try self.parseMatchPatterns();
 
         // '->' to indicate end of patterns
@@ -353,29 +361,17 @@ pub const Parser = struct {
         return arm;
     }
 
-    pub fn parseMatchPattern(self: *Self) ParseErrorKind!ast.Pattern {
+    fn parseMatchPattern(self: *Self) ErrorKind!ast.Pattern {
         switch (self.curr_token) {
-            .keyword => |kw| switch (kw) {
-                .else_token => {
-                    self.nextToken();
-                    return .{ .catch_all = {} };
-                },
-                else => return self.newError(
-                    ParseErrorKind.IllegalKeyword,
-                    "Only the 'else' keyword is allowed as a match pattern, found: {}",
-                    .{kw},
-                ),
-            },
-
             .string_literal => |val| {
-                self.nextToken();
+                self.next();
                 return .{
                     .literal = .{ .string_literal = val },
                 };
             },
 
             .integer => |val| {
-                self.nextToken();
+                self.next();
 
                 if (self.curr_token != .dot) {
                     return .{
@@ -384,18 +380,18 @@ pub const Parser = struct {
                 }
 
                 try self.expectInfixOperator(.range);
-                self.nextToken();
-                self.nextToken();
+                self.next();
+                self.next();
 
                 const to = switch (self.curr_token) {
                     .integer => |rval| rval,
-                    else => return self.newError(
-                        ParseErrorKind.InvalidInteger,
+                    else => return self.errorMessage(
+                        ErrorKind.InvalidInteger,
                         "invalid integer: {any}",
                         .{self.curr_token},
                     ),
                 };
-                self.nextToken();
+                self.next();
 
                 return .{
                     .range = ast.RangePattern{
@@ -405,33 +401,37 @@ pub const Parser = struct {
                 };
             },
 
-            else => return self.newError(
-                ParseErrorKind.InvalidToken,
+            .ident => |ident| {
+                self.next();
+                return .{ .irrefutable = ident };
+            },
+
+            else => return self.errorMessage(
+                ErrorKind.InvalidToken,
                 "Invalid match pattern",
                 .{},
             ),
         }
     }
 
-    // /// this is different from range patterns as patterns can only use literal numbers and no identifiers etc.
+    // TODO: this is different from range patterns as patterns can only use literal numbers and no identifiers etc.
     // fn parseRangeExpression(self: *Self, left: ast.Expression) ParseErrorKind!ast.RangeExpression {
     //     try self.consumeToken(.dot);
     //     try self.consumeToken(.dot);
-    //
     //     return ast.RangeExpression{
     //         .left = left,
     //         .right = try self.parseExpression(),
     //     };
     // }
 
-    fn parseMatchPatterns(self: *Self) ParseErrorKind![]ast.Pattern {
+    fn parseMatchPatterns(self: *Self) ErrorKind![]ast.Pattern {
         var patterns = Array(ast.Pattern).init(self.alloc);
 
         const pattern = try self.parseMatchPattern();
         patterns.append(pattern) catch @panic("unable to append pattern");
 
         while (self.curr_token == .pipe) {
-            self.nextToken();
+            self.next();
             const p = try self.parseMatchPattern();
             patterns.append(p) catch @panic("unable to append pattern");
         }
@@ -439,9 +439,9 @@ pub const Parser = struct {
         return patterns.items;
     }
 
-    pub fn parseFunctionCallExpression(self: *Self, ident: []const u8) ParseErrorKind!ast.FunctionCall {
+    fn parseFunctionCallExpression(self: *Self, ident: []const u8) ErrorKind!ast.FunctionCall {
         var arguments = Array(ast.Expression).init(self.alloc);
-        self.nextToken();
+        self.next();
         try self.consumeToken(.lparen);
 
         while (!eql(self.curr_token, .rparen)) {
@@ -457,24 +457,19 @@ pub const Parser = struct {
         };
     }
 
-    pub fn parseFunctionStatement(self: *Self) ParseErrorKind!ast.FunctionStatement {
-        self.nextToken();
-
+    fn parseFunctionStatement(self: *Self) ErrorKind!ast.FunctionStatement {
+        self.next();
         const ident = try self.parseIdentifier();
 
-        // arguments
         try self.consumeToken(lex.Token.lparen);
-
         var arguments = Array(ast.FunctionArgument).init(self.alloc);
         while (!eql(self.curr_token, .rparen)) {
             const arg = try self.parseFunctionArgument();
             arguments.append(arg) catch @panic("unable to append");
         }
-
         try self.consumeToken(lex.Token.rparen);
 
         const body = try self.parseBlock();
-
         try self.consumeToken(.semicolon);
 
         return ast.FunctionStatement{
@@ -484,8 +479,8 @@ pub const Parser = struct {
         };
     }
 
-    pub fn parseReturnStatement(self: *Self) ParseErrorKind!ast.ReturnStatement {
-        self.nextToken();
+    fn parseReturnStatement(self: *Self) ErrorKind!ast.ReturnStatement {
+        self.next();
         const expr = try self.parseExpression();
         try self.consumeToken(.semicolon);
 
@@ -494,16 +489,16 @@ pub const Parser = struct {
         };
     }
 
-    pub fn parseLetStatement(self: *Self) ParseErrorKind!ast.LetStatement {
-        self.nextToken();
+    fn parseLetStatement(self: *Self) ErrorKind!ast.LetStatement {
+        self.next();
 
         const mutable = eql(self.curr_token, .{ .keyword = .mut });
-        if (mutable) self.nextToken();
+        if (mutable) self.next();
 
         const ident = try self.parseIdentifier();
 
         try self.expectInfixOperator(ast.InfixOperator.equal);
-        self.nextToken();
+        self.next();
 
         const res = ast.LetStatement{
             .identifier = ident,
@@ -516,7 +511,7 @@ pub const Parser = struct {
         return res;
     }
 
-    pub fn parseExpression(self: *Self) ParseErrorKind!ast.Expression {
+    fn parseExpression(self: *Self) ErrorKind!ast.Expression {
         if (self.scanPrefixOperator()) |operator| {
             return .{ .prefix_operator = try self.parsePrefixBinaryExpression(operator) };
         }
@@ -534,7 +529,7 @@ pub const Parser = struct {
                     expr.* = try self.parseMatchExpression();
                     return .{ .match = expr };
                 },
-                else => return self.newError(ParseErrorKind.IllegalKeyword, "", .{}),
+                else => return self.errorMessage(ErrorKind.IllegalKeyword, "", .{}),
             },
 
             .ident => |ident| blk: {
@@ -560,10 +555,10 @@ pub const Parser = struct {
 
             .eof => unreachable,
 
-            else => return self.newError(ParseErrorKind.ExpressionExpected, "", .{}),
+            else => return self.errorMessage(ErrorKind.ExpressionExpected, "", .{}),
         };
 
-        self.nextToken();
+        self.next();
 
         if (self.curr_token == .lbracket) {
             const index_expr = self.alloc.create(ast.IndexExpression) catch @panic("unable to allocate");
@@ -580,21 +575,62 @@ pub const Parser = struct {
         };
     }
 
-    pub fn parseListExpression(self: *Self) ParseErrorKind![]ast.Expression {
+    fn parseForStatement(self: *Self) ErrorKind!ast.ForStatement {
+        try self.expectKeyword(.for_token);
+        self.next();
+
+        var identifiers = Array(ast.Identifier).init(self.alloc);
+        while (true) {
+            switch (self.curr_token) {
+                .keyword => |kw| if (kw == .in) break,
+                .comma => self.next(),
+                else => {},
+            }
+            const ident = try self.parseIdentifier();
+            identifiers.append(ident) catch @panic("unable to append identifier");
+        }
+
+        try self.expectKeyword(.in);
+        self.next();
+
+        const value = try self.parseExpression();
+        const block = try self.parseBlock();
+
+        return ast.ForStatement{
+            .value = value,
+            .identifiers = identifiers.items,
+            .body = block,
+        };
+    }
+
+    fn parseWhileStatement(self: *Self) ErrorKind!ast.WhileStatement {
+        try self.expectKeyword(.while_token);
+        self.next();
+
+        const condition = try self.parseExpression();
+        const block = try self.parseBlock();
+
+        return ast.WhileStatement{
+            .condition = condition,
+            .body = block,
+        };
+    }
+
+    fn parseListExpression(self: *Self) ErrorKind![]ast.Expression {
         try self.consumeToken(.lbracket);
 
         var expressions = Array(ast.Expression).init(self.alloc);
         while (self.curr_token != .rbracket) {
             const e = try self.parseExpression();
             expressions.append(e) catch @panic("unable to append pattern");
-            if (self.curr_token == .comma) self.nextToken(); // TODO: nice error if comma is missing between items
+            if (self.curr_token == .comma) self.next(); // TODO: nice error if comma is missing between items
         }
 
         try self.expectToken(.rbracket);
         return expressions.items;
     }
 
-    pub fn parseGroupedExpression(self: *Self) ParseErrorKind!ast.GroupedExpression {
+    fn parseGroupedExpression(self: *Self) ErrorKind!ast.GroupedExpression {
         try self.consumeToken(.lparen);
         const expr = try self.parseExpression();
         try self.expectToken(.rparen);
@@ -604,7 +640,7 @@ pub const Parser = struct {
     // TODO: operator precedence
     // A discussion with Casey Muratori about how easy precedence is...
     // https://www.youtube.com/watch?v=fIPO4G42wYE&t=6165s
-    fn parseInfixBinaryExpression(self: *Self, left: ast.Expression) ParseErrorKind!*ast.InfixBinaryExpression {
+    fn parseInfixBinaryExpression(self: *Self, left: ast.Expression) ErrorKind!*ast.InfixBinaryExpression {
         const op = try self.parseInfixOperator();
         const expr = self.alloc.create(ast.InfixBinaryExpression) catch @panic("unable to allocate");
         expr.* = ast.InfixBinaryExpression{
@@ -616,9 +652,9 @@ pub const Parser = struct {
         return expr;
     }
 
-    fn parsePrefixBinaryExpression(self: *Self, left: ast.PrefixOperator) ParseErrorKind!*ast.PrefixBinaryExpression {
+    fn parsePrefixBinaryExpression(self: *Self, left: ast.PrefixOperator) ErrorKind!*ast.PrefixBinaryExpression {
         const expr = self.alloc.create(ast.PrefixBinaryExpression) catch @panic("unable to allocate");
-        self.nextToken();
+        self.next();
         expr.* = ast.PrefixBinaryExpression{
             .left = left,
             .right = try self.parseExpression(),
@@ -626,7 +662,9 @@ pub const Parser = struct {
         return expr;
     }
 
-    pub fn printPosition(self: *Self, line: usize, column: usize) void {
+    /// Print out current line's content with cursor
+    /// pointing at the lexers current position
+    fn printPosition(self: *Self, line: usize, column: usize) void {
         var iter = std.mem.splitSequence(u8, self.lexer.content, "\n");
         var i: u32 = 0;
         while (iter.next()) |content| {
@@ -641,6 +679,7 @@ pub const Parser = struct {
         }
     }
 
+    /// Print lexers current and next token, optionally printing `self.errors`
     pub fn printDebug(self: *Self, message: []const u8, print_errors: bool) void {
         std.debug.print("{s}: curr_token: {any} peek_token: {any}\n", .{
             message,
@@ -662,11 +701,11 @@ pub const Parser = struct {
     }
 };
 
-fn expectEqualAst(content: []const u8, expected: []const u8) !void {
+fn expectAst(content: []const u8, expected: []const u8) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     const alloc = arena.allocator();
 
-    var parser = Parser.new(content, alloc);
+    var parser = Parser.init(content, alloc);
     defer arena.deinit();
     const nodes = try parser.parseNodes();
 
@@ -688,7 +727,7 @@ fn expectEqualAst(content: []const u8, expected: []const u8) !void {
 }
 
 test "Parse - let statements" {
-    try expectEqualAst("let age=21;",
+    try expectAst("let age=21;",
         \\.statement:
         \\  .let:
         \\    .identifier: "age"
@@ -697,7 +736,7 @@ test "Parse - let statements" {
         \\    .mutable: false
     );
 
-    try expectEqualAst("let mut age = 21;",
+    try expectAst("let mut age = 21;",
         \\.statement:
         \\  .let:
         \\    .identifier: "age"
@@ -706,7 +745,7 @@ test "Parse - let statements" {
         \\    .mutable: true
     );
 
-    try expectEqualAst("let name = \"bob\";",
+    try expectAst("let name = \"bob\";",
         \\.statement:
         \\  .let:
         \\    .identifier: "name"
@@ -717,7 +756,7 @@ test "Parse - let statements" {
 }
 
 test "Parse - return" {
-    try expectEqualAst("return 2500 - 10;",
+    try expectAst("return 2500 - 10;",
         \\.statement:
         \\  .return_:
         \\    .value:
@@ -729,7 +768,7 @@ test "Parse - return" {
         \\          .integer_literal: 10
     );
 
-    try expectEqualAst("return 2500;",
+    try expectAst("return 2500;",
         \\.statement:
         \\  .return_:
         \\    .value:
@@ -738,7 +777,7 @@ test "Parse - return" {
 }
 
 test "Parse - operator expressions" {
-    try expectEqualAst("let name = 25*10;",
+    try expectAst("let name = 25*10;",
         \\.statement:
         \\  .let:
         \\    .identifier: "name"
@@ -754,7 +793,7 @@ test "Parse - operator expressions" {
 }
 
 test "Parse - nested operator expressions" {
-    try expectEqualAst("let name = 25 * 10 - 50;",
+    try expectAst("let name = 25 * 10 - 50;",
         \\.statement:
         \\  .let:
         \\    .identifier: "name"
@@ -775,7 +814,7 @@ test "Parse - nested operator expressions" {
 }
 
 test "Parse - conditionals" {
-    try expectEqualAst(
+    try expectAst(
         \\if 100 > 50 {
         \\  let a = "bigger";
         \\}
@@ -802,7 +841,7 @@ test "Parse - conditionals" {
 }
 
 test "Parse - grouped expressions" {
-    try expectEqualAst("let mygroup = 10 - (2 * 5);",
+    try expectAst("let mygroup = 10 - (2 * 5);",
         \\.statement:
         \\  .let:
         \\    .identifier: "mygroup"
@@ -825,7 +864,7 @@ test "Parse - grouped expressions" {
 }
 
 test "Parse - function call" {
-    try expectEqualAst("let greeting = greet(\"bob\");",
+    try expectAst("let greeting = greet(\"bob\");",
         \\.statement:
         \\  .let:
         \\    .identifier: "greeting"
@@ -839,7 +878,7 @@ test "Parse - function call" {
 }
 
 test "Parse - match expression" {
-    try expectEqualAst(
+    try expectAst(
         \\let age_group = match 5 {
         \\  0..10 -> "teens",
         \\  10..20 -> "twenties",
@@ -854,15 +893,15 @@ test "Parse - match expression" {
         \\          .integer_literal: 5
         \\        .arms:
         \\          .patterns:
-        \\            .integer_range:
-        \\              .from: 0
-        \\              .to: 10
+        \\            .range:
+        \\              .left: 0
+        \\              .right: 10
         \\          .consequence:
         \\            .string_literal: "teens"
         \\          .patterns:
-        \\            .integer_range:
-        \\              .from: 10
-        \\              .to: 20
+        \\            .range:
+        \\              .left: 10
+        \\              .right: 20
         \\          .consequence:
         \\            .string_literal: "twenties"
         \\    .mutable: false
@@ -870,7 +909,7 @@ test "Parse - match expression" {
 }
 
 test "Parse - list expression" {
-    try expectEqualAst("let items = [10, 20, \"thirty\"];",
+    try expectAst("let items = [10, 20, \"thirty\"];",
         \\.statement:
         \\  .let:
         \\    .identifier: "items"
@@ -880,5 +919,49 @@ test "Parse - list expression" {
         \\        .integer_literal: 20
         \\        .string_literal: "thirty"
         \\    .mutable: false
+    );
+}
+
+test "Parse - for loop" {
+    try expectAst(
+        \\ for i, item in items {
+        \\   let a = 10;
+        \\ }
+    ,
+        \\.statement:
+        \\  .for_loop:
+        \\    .identifiers: "i"
+        \\      "item"
+        \\    .value:
+        \\      .identifier: "items"
+        \\    .body:
+        \\      .nodes:
+        \\        .statement:
+        \\          .let:
+        \\            .identifier: "a"
+        \\            .value:
+        \\              .integer_literal: 10
+        \\            .mutable: false
+    );
+}
+
+test "Parse - while loop" {
+    try expectAst(
+        \\ while true {
+        \\   let b = 20;
+        \\ }
+    ,
+        \\.statement:
+        \\  .while_loop:
+        \\    .condition:
+        \\      .boolean: true
+        \\    .body:
+        \\      .nodes:
+        \\        .statement:
+        \\          .let:
+        \\            .identifier: "b"
+        \\            .value:
+        \\              .integer_literal: 20
+        \\            .mutable: false
     );
 }
