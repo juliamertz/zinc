@@ -850,3 +850,17 @@ test "Parse - match expression" {
         \\    .mutable: false
     );
 }
+
+test "Parse - list expression" {
+    try expectEqualAst("let items = [10, 20, \"thirty\"];",
+        \\.statement:
+        \\  .let:
+        \\    .identifier: "items"
+        \\    .value:
+        \\      .list:
+        \\        .integer_literal: 10
+        \\        .integer_literal: 20
+        \\        .string_literal: "thirty"
+        \\    .mutable: false
+    );
+}
