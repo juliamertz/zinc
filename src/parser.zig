@@ -318,10 +318,15 @@ pub const Parser = struct {
     fn parseIfElseStatement(self: *Self) ErrorKind!ast.IfStatement {
         self.next();
 
+        const expr = try self.parseExpression();
+        const block = try self.parseBlock();
+        const alternative = self.parseOptionalElseStatement() catch null;
+        try self.consumeToken(.semicolon);
+
         return ast.IfStatement{
-            .condition = try self.parseExpression(),
-            .consequence = try self.parseBlock(),
-            .alternative = self.parseOptionalElseStatement() catch null, // FIX: legitimate errors while parsing else statements are ignored
+            .condition = expr,
+            .consequence = block,
+            .alternative = alternative, // FIX: legitimate errors while parsing else statements are ignored
         };
     }
 
