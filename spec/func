@@ -1,3 +1,8 @@
 func greet(name) {
   let a = 10;
 };
+
+let greeter = func(name) {
+  let message = "hello " + name;
+  return message;
+};

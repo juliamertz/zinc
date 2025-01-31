@@ -24,7 +24,7 @@ pub fn main() !void {
 
             const max = std.math.maxInt(usize);
             const content = try std.fs.cwd().readFileAlloc(arena.allocator(), filepath, max);
-            try stdout.print("content:\n\n{s}\n", .{content});
+            // try stdout.print("content:\n\n{s}\n", .{content});
 
             var interpreter = interp.Interpreter.new(arena.allocator());
             try repl.run(arena.allocator(), &interpreter, content);

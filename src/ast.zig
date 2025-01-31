@@ -27,6 +27,7 @@ pub const Expression = union(enum) {
     infix_operator: *InfixBinaryExpression,
     index: *IndexExpression,
     integer_literal: i64,
+    function_literal: *FunctionLiteral,
     identifier: []const u8,
     function_call: *FunctionCall,
     match: *MatchExpression,
@@ -35,8 +36,15 @@ pub const Expression = union(enum) {
     list: []Expression,
 };
 
+pub const Identifier = []const u8;
+
 pub const GroupedExpression = struct {
     expression: Expression,
+};
+
+pub const FunctionLiteral = struct {
+    arguments: []FunctionArgument,
+    body: Block,
 };
 
 /// range holding left/right expressions of unknown type
@@ -85,8 +93,6 @@ pub const Pattern = union(enum) {
     literal: Expression,
     irrefutable: Identifier,
 };
-
-pub const Identifier = []const u8;
 
 pub const FunctionArgument = struct {
     identifier: Identifier,

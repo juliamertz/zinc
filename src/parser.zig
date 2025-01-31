@@ -117,6 +117,13 @@ pub const Parser = struct {
         self.next();
     }
 
+    /// Check if current token is equal to passed in token, then advance.
+    /// throws an error if it does not match
+    fn consumeKeyword(self: *Self, expected: lex.Keyword) !void {
+        try self.expectKeyword(expected);
+        self.next();
+    }
+
     /// Parse nodes and accumulate into an `ArrayList`
     /// This will attempt to parse until `eof` is reached.
     pub fn parseNodes(self: *Self) ErrorKind![]ast.Node {
@@ -462,6 +469,24 @@ pub const Parser = struct {
         };
     }
 
+    // FIX: This isn't parse right yet
+    fn parseFunctionLiteral(self: *Self) ErrorKind!ast.FunctionLiteral {
+        try self.consumeKeyword(lex.Keyword.function);
+        try self.consumeToken(lex.Token.lparen);
+        var arguments = Array(ast.FunctionArgument).init(self.alloc);
+        while (!eql(self.curr_token, .rparen)) {
+            const arg = try self.parseFunctionArgument();
+            arguments.append(arg) catch @panic("unable to append");
+        }
+        try self.consumeToken(lex.Token.rparen);
+        const body = try self.parseBlock();
+
+        return ast.FunctionLiteral{
+            .arguments = arguments.items,
+            .body = body,
+        };
+    }
+
     fn parseFunctionStatement(self: *Self) ErrorKind!ast.FunctionStatement {
         self.next();
         const ident = try self.parseIdentifier();
@@ -529,6 +554,14 @@ pub const Parser = struct {
             .keyword => |val| switch (val) {
                 .true_token => .{ .boolean = true },
                 .false_token => .{ .boolean = false },
+                .function => blk: {
+                    const func = self.alloc.create(ast.FunctionLiteral) catch @panic("unable to allocate");
+                    func.* = try self.parseFunctionLiteral();
+                    debug("parsed function literal: {any}\n", .{func});
+                    break :blk .{
+                        .function_literal = func,
+                    };
+                },
                 .match => {
                     const expr = self.alloc.create(ast.MatchExpression) catch @panic("unable to allocate");
                     expr.* = try self.parseMatchExpression();
@@ -822,7 +855,7 @@ test "Parse - conditionals" {
     try expectAst(
         \\if 100 > 50 {
         \\  let a = "bigger";
-        \\}
+        \\};
     ,
         \\.statement:
         \\  .if_else:

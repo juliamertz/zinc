@@ -1,3 +1,5 @@
 let val = true or false;
+let mygroup = ((100 * (10 - 5)) * 20);
+let test = 10 - 10 * 20;
 
 
