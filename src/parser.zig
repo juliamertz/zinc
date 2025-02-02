@@ -461,7 +461,7 @@ pub const Parser = struct {
             arguments.append(arg) catch @panic("unable to append");
         }
 
-        try self.expectToken(.rparen);
+        try self.consumeToken(.rparen);
 
         return ast.FunctionCall{
             .arguments = arguments.items,
@@ -471,15 +471,23 @@ pub const Parser = struct {
 
     // FIX: This isn't parse right yet
     fn parseFunctionLiteral(self: *Self) ErrorKind!ast.FunctionLiteral {
+        debug("in parse func literal, curr: {any}, peek: {any}\n", .{ self.curr_token, self.peek_token });
         try self.consumeKeyword(lex.Keyword.function);
         try self.consumeToken(lex.Token.lparen);
+
+        debug("in parse func literal, curr: {any}, peek: {any}\n", .{ self.curr_token, self.peek_token });
         var arguments = Array(ast.FunctionArgument).init(self.alloc);
         while (!eql(self.curr_token, .rparen)) {
             const arg = try self.parseFunctionArgument();
             arguments.append(arg) catch @panic("unable to append");
         }
+        debug("in parse func literal, curr: {any}, peek: {any}\n", .{ self.curr_token, self.peek_token });
+        // debug("arguments: {any}\n", .{arguments});
         try self.consumeToken(lex.Token.rparen);
+        debug("in parse func literal, curr: {any}, peek: {any}\n", .{ self.curr_token, self.peek_token });
         const body = try self.parseBlock();
+        debug("in parse func literal, curr: {any}, peek: {any}\n", .{ self.curr_token, self.peek_token });
+        debug("body: {any}\n", .{body});
 
         return ast.FunctionLiteral{
             .arguments = arguments.items,
@@ -547,25 +555,33 @@ pub const Parser = struct {
         }
 
         const expr: ast.Expression = switch (self.curr_token) {
-            .integer => |val| .{
-                .integer_literal = val,
+            .integer => |val| blk: {
+                self.next();
+                break :blk .{ .integer_literal = val };
             },
 
             .keyword => |val| switch (val) {
-                .true_token => .{ .boolean = true },
-                .false_token => .{ .boolean = false },
+                .true_token => blk: {
+                    self.next();
+                    break :blk .{ .boolean = true };
+                },
+                .false_token => blk: {
+                    self.next();
+                    break :blk .{ .boolean = false };
+                },
                 .function => blk: {
                     const func = self.alloc.create(ast.FunctionLiteral) catch @panic("unable to allocate");
                     func.* = try self.parseFunctionLiteral();
                     debug("parsed function literal: {any}\n", .{func});
+                    debug("curr: {any}, peek: {any}\n", .{ self.curr_token, self.peek_token });
                     break :blk .{
                         .function_literal = func,
                     };
                 },
-                .match => {
+                .match => blk: {
                     const expr = self.alloc.create(ast.MatchExpression) catch @panic("unable to allocate");
                     expr.* = try self.parseMatchExpression();
-                    return .{ .match = expr };
+                    break :blk .{ .match = expr };
                 },
                 else => return self.errorMessage(ErrorKind.IllegalKeyword, "", .{}),
             },
@@ -577,9 +593,11 @@ pub const Parser = struct {
 
                     break :blk .{ .function_call = expr };
                 }
+                self.next();
                 break :blk .{ .identifier = ident };
             },
             .string_literal => |value| blk: {
+                self.next();
                 break :blk .{ .string_literal = value };
             },
 
@@ -595,8 +613,6 @@ pub const Parser = struct {
 
             else => return self.errorMessage(ErrorKind.ExpressionExpected, "", .{}),
         };
-
-        self.next();
 
         if (self.curr_token == .lbracket) {
             const index_expr = self.alloc.create(ast.IndexExpression) catch @panic("unable to allocate");
@@ -664,14 +680,14 @@ pub const Parser = struct {
             if (self.curr_token == .comma) self.next(); // TODO: nice error if comma is missing between items
         }
 
-        try self.expectToken(.rbracket);
+        try self.consumeToken(.rbracket);
         return expressions.items;
     }
 
     fn parseGroupedExpression(self: *Self) ErrorKind!ast.GroupedExpression {
         try self.consumeToken(.lparen);
         const expr = try self.parseExpression();
-        try self.expectToken(.rparen);
+        try self.consumeToken(.rparen);
         return .{ .expression = expr };
     }
 

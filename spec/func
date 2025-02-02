@@ -6,3 +6,4 @@ let greeter = func(name) {
   let message = "hello " + name;
   return message;
 };
+

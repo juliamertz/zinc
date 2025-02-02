@@ -1,4 +1,8 @@
-data $fmt = { b "One and one make %d!\n", b 0 }
+# `w` or `word` - means a simple 32/64 bit number depending on platform
+# `b` or `byte/bytes` 
+
+data $fmt = { b "Four and one make %d!\n", b 0 }
+data $resmsg = { b "The number is %d!\n", b 0 }
 
 function w $add(w %a, w %b) {              # Define a function add
 @start
@@ -6,9 +10,60 @@ function w $add(w %a, w %b) {              # Define a function add
 	ret %c                             # Return the result
 }
 
-export function w $main() {                # Main function
+function $loop() {
 @start
-	%r =w call $add(w 1, w 1)          # Call add(1, 1)
-	call $printf(l $fmt, ..., w %r)    # Show the result
+@loop
+  # phi initializes at given tag, `@start` in this case
+  # which will then be updated with the value of `%x1` on each subsequent `@loop`
+  %x =w phi @start 100, @loop %x1
+  %x1 =w sub %x, 1
+	call $printf(l $resmsg, w %x)
+
+  # add one be 0 inclusive
+  %x2 =w add %x1, 1
+  # jumps if value `%x2` is greater than 0
+  jnz %x2, @loop, @end
+@end
+  ret
+}
+
+data $write_buff = { b 0 }
+
+# byte to be written
+# output identifier - stdout/stderr
+function $print_byte(l %my_byte, w %output) {
+@start
+
+ # load byte from addres at %my_byte
+ %curr_byte =w loadub %my_byte
+
+ # set cmp to 1 if %curr_byte is eq to 0
+ # all comparisons start with `c`,
+ # then the type of comparison `eq` followed by the type `w`
+ # otherwise it's set to 0 indicating it does not match
+ # %cmp =w ceqw %curr_byte, 0
+
+ # jump to location based on the value of %cmp
+ # jnz %cmp, @end, @continue
+
+ # @continue
+
+ # put current byte into global write buffer
+ storew %curr_byte, $write_buff
+
+call $write(w %output, w %curr_byte, w 1)
+# @end
+  ret
+}
+
+data $some_byte = { b 50 }
+
+export function w $main() {
+@start
+	%r =w add 4, 1
+  # call $loop()
+
+  call $print_byte(w 1, l $some_byte, w 1)
+	call $printf(l $fmt, w %r)
 	ret 0
 }
