@@ -5,7 +5,6 @@ const lex = @import("lexer.zig");
 
 const Array = std.ArrayList;
 const eql = std.meta.eql;
-const debug = std.debug.print; // TODO: remove this
 
 pub const ErrorKind = error{
     IdentifierExpected,
@@ -18,16 +17,17 @@ pub const ErrorKind = error{
     IllegalKeyword,
     IllegalIdentifier,
 
-    UnexpectedEof,
     InvalidInteger,
+    InvalidOperator,
     InvalidToken, // Maybe this is a bit too general
+
+    UnexpectedEof,
 };
 
 pub const ParseError = struct {
     kind: ErrorKind,
-    line: usize,
-    column: usize,
     message: []const u8,
+    location: std.zig.Loc,
 };
 
 pub const Parser = struct {
@@ -57,13 +57,11 @@ pub const Parser = struct {
 
     /// Append error message to self.errors
     fn errorMessage(self: *Self, kind: ErrorKind, comptime msg: []const u8, args: anytype) ErrorKind {
-        const err = ParseError{
+        self.errors.append(ParseError{
             .kind = kind,
             .message = std.fmt.allocPrint(self.alloc, msg, args) catch "failed to print message??",
-            .line = self.lexer.line,
-            .column = self.lexer.column,
-        };
-        self.errors.append(err) catch @panic("unable to allocate for ParseError");
+            .location = std.zig.findLineColumn(self.lexer.content, self.lexer.position),
+        }) catch @panic("unable to allocate for ParseError");
         return kind;
     }
 
@@ -75,13 +73,12 @@ pub const Parser = struct {
     }
 
     /// Check if the current token is equal to passed in infix operator
-    /// throws an error if it does not match
     fn expectInfixOperator(self: *Self, expected: ast.InfixOperator) ErrorKind!void {
         const operator = try self.scanInfixOperator();
 
         if (operator != expected) {
             return self.errorMessage(
-                ErrorKind.InvalidToken, // TODO: InvalidOperator
+                ErrorKind.InvalidOperator,
                 "invalid operator expected: {any}, got: {any}",
                 .{ expected, operator },
             );
@@ -153,12 +150,10 @@ pub const Parser = struct {
                 try self.consumeToken(.semicolon);
 
                 return .{
-                    .statement = .{
-                        .assign = .{
-                            .identifier = ident,
-                            .value = expr,
-                        },
-                    },
+                    .statement = .{ .assign = .{
+                        .identifier = ident,
+                        .value = expr,
+                    } },
                 };
             },
 
@@ -213,6 +208,7 @@ pub const Parser = struct {
         return int;
     }
 
+    // Check if current token is a prefix operator
     fn scanPrefixOperator(self: *Self) ?ast.PrefixOperator {
         return switch (self.curr_token) {
             .minus => .minus,
@@ -221,6 +217,7 @@ pub const Parser = struct {
         };
     }
 
+    // Check if current token is an infix operator
     fn scanInfixOperator(self: *Self) ErrorKind!ast.InfixOperator {
         return switch (self.curr_token) {
             .equal => .equal,
@@ -295,16 +292,24 @@ pub const Parser = struct {
 
     fn parseStatement(self: *Self) ErrorKind!ast.Statement {
         const statement: ast.Statement = switch (self.curr_token) {
-            .keyword => |kw| switch (kw) {
+            .keyword => |keyword| switch (keyword) {
                 .let => .{ .let = try self.parseLetStatement() },
                 .return_token => .{ .return_ = try self.parseReturnStatement() },
                 .function => .{ .function = try self.parseFunctionStatement() },
                 .if_token => .{ .if_else = try self.parseIfElseStatement() },
                 .for_token => .{ .for_loop = try self.parseForStatement() },
                 .while_token => .{ .while_loop = try self.parseWhileStatement() },
-                else => return self.errorMessage(ErrorKind.InvalidToken, "", .{}),
+                else => return self.errorMessage(
+                    ErrorKind.IllegalKeyword,
+                    "Invalid keyword {any} while parsing statement",
+                    .{keyword},
+                ),
             },
-            else => return self.errorMessage(ErrorKind.InvalidToken, "", .{}),
+            else => return self.errorMessage(
+                ErrorKind.InvalidToken,
+                "Expected a keyword while parsing statement, found token: {any}",
+                .{self.curr_token},
+            ),
         };
 
         return statement;
@@ -317,23 +322,22 @@ pub const Parser = struct {
     }
 
     fn parseOptionalElseStatement(self: *Self) ErrorKind!?ast.Block {
-        try self.expectKeyword(.else_token);
-        self.next();
+        try self.consumeKeyword(.else_token);
         return try self.parseBlock();
     }
 
     fn parseIfElseStatement(self: *Self) ErrorKind!ast.IfStatement {
-        self.next();
-
+        try self.consumeKeyword(.if_token);
         const expr = try self.parseExpression();
         const block = try self.parseBlock();
+        // FIX: legitimate errors while parsing else statements are ignored
         const alternative = self.parseOptionalElseStatement() catch null;
         try self.consumeToken(.semicolon);
 
         return ast.IfStatement{
             .condition = expr,
             .consequence = block,
-            .alternative = alternative, // FIX: legitimate errors while parsing else statements are ignored
+            .alternative = alternative,
         };
     }
 
@@ -386,9 +390,7 @@ pub const Parser = struct {
                 self.next();
 
                 if (self.curr_token != .dot) {
-                    return .{
-                        .literal = .{ .integer_literal = val },
-                    };
+                    return .{ .literal = .{ .integer_literal = val } };
                 }
 
                 try self.expectInfixOperator(.range);
@@ -411,6 +413,10 @@ pub const Parser = struct {
                         .right = to,
                     },
                 };
+            },
+
+            .lbracket => {
+                return .{ .literal = .{ .list = try self.parseListExpression() } };
             },
 
             .ident => |ident| {
@@ -526,9 +532,7 @@ pub const Parser = struct {
         if (mutable) self.next();
 
         const ident = try self.parseIdentifier();
-
-        try self.expectInfixOperator(ast.InfixOperator.equal);
-        self.next();
+        try self.consumeToken(.equal);
 
         const res = ast.LetStatement{
             .identifier = ident,
@@ -551,7 +555,6 @@ pub const Parser = struct {
                 self.next();
                 break :blk .{ .integer_literal = val };
             },
-
             .keyword => |val| switch (val) {
                 .true_token => blk: {
                     self.next();
@@ -575,12 +578,10 @@ pub const Parser = struct {
                 },
                 else => return self.errorMessage(ErrorKind.IllegalKeyword, "", .{}),
             },
-
             .ident => |ident| blk: {
                 if (eql(self.peek_token, .lparen)) {
                     const expr = self.alloc.create(ast.FunctionCall) catch @panic("unable to allocate");
                     expr.* = try self.parseFunctionCallExpression(ident);
-
                     break :blk .{ .function_call = expr };
                 }
                 self.next();
@@ -590,17 +591,13 @@ pub const Parser = struct {
                 self.next();
                 break :blk .{ .string_literal = value };
             },
-
             .lparen => blk: {
                 const expr = self.alloc.create(ast.GroupedExpression) catch @panic("unable to allocate");
                 expr.* = try self.parseGroupedExpression();
                 break :blk .{ .grouped_expression = expr };
             },
-
             .lbracket => .{ .list = try self.parseListExpression() },
-
             .eof => unreachable,
-
             else => return self.errorMessage(ErrorKind.ExpressionExpected, "", .{}),
         };
 
@@ -660,6 +657,7 @@ pub const Parser = struct {
         };
     }
 
+    /// Parse list of expressions seperated by comma's and surrounded by brackets
     fn parseListExpression(self: *Self) ErrorKind![]ast.Expression {
         try self.consumeToken(.lbracket);
 
@@ -674,6 +672,7 @@ pub const Parser = struct {
         return expressions.items;
     }
 
+    /// Parse expression surrounded by parentheses
     fn parseGroupedExpression(self: *Self) ErrorKind!ast.GroupedExpression {
         try self.consumeToken(.lparen);
         const expr = try self.parseExpression();
@@ -711,21 +710,22 @@ pub const Parser = struct {
     fn printPosition(self: *Self, line: usize, column: usize) void {
         var iter = std.mem.splitSequence(u8, self.lexer.content, "\n");
         var i: u32 = 0;
+
         while (iter.next()) |content| {
             if (line == i) {
                 const linenumber = std.fmt.allocPrint(self.alloc, "{d}: ", .{i + 1}) catch unreachable;
                 const extra_padding = linenumber.len - 1 + column;
-                std.debug.print("{s}{s}\n", .{ linenumber, content });
+                std.log.debug("{s}{s}\n", .{ linenumber, content });
                 const padding = utils.repeatString(self.alloc, " ", extra_padding) catch unreachable;
-                std.debug.print("{s}^\n", .{padding});
+                std.log.debug("{s}^\n", .{padding});
             }
             i += 1;
         }
     }
 
     /// Print lexers current and next token, optionally printing `self.errors`
-    pub fn printDebug(self: *Self, message: []const u8, print_errors: bool) void {
-        std.debug.print("{s}: curr_token: {any} peek_token: {any}\n", .{
+    pub fn debug(self: *Self, message: []const u8, print_errors: bool) void {
+        std.log.debug("{s}: curr_token: {any} peek_token: {any}\n", .{
             message,
             self.curr_token,
             self.peek_token,
@@ -733,19 +733,19 @@ pub const Parser = struct {
 
         if (print_errors) {
             for (self.errors.items) |err| {
-                std.debug.print("error: {any} at {d}:{d}\n{s}\n", .{
+                std.log.err("{any} at {d}:{d}\n{s}\n", .{
                     err.kind,
-                    err.line + 1,
-                    err.column + 1,
+                    err.location.line + 1,
+                    err.location.column + 1,
                     err.message,
                 });
-                self.printPosition(err.line, err.column);
+                self.printPosition(err.location.line, err.location.column);
             }
         }
     }
 };
 
-fn expectAst(content: []const u8, expected: []const u8) !void {
+inline fn expectAst(content: []const u8, expected: []const u8) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     const alloc = arena.allocator();
 

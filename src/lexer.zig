@@ -83,9 +83,6 @@ pub const Lexer = struct {
     position: usize = 0,
     content: []const u8,
 
-    line: usize = 0,
-    column: usize = 0,
-
     const Self = @This();
 
     pub fn new(content: []const u8) Self {
@@ -112,12 +109,6 @@ pub const Lexer = struct {
 
     fn skipWhitespace(self: *Self) void {
         while (utils.isWhitespace(self.current())) {
-            if (self.current() == '\n') {
-                self.line += 1;
-                self.column = 0;
-            } else {
-                self.column += 1;
-            }
             self.advance();
         }
     }
@@ -126,7 +117,6 @@ pub const Lexer = struct {
         if (self.read_position != self.content.len) {
             self.position = self.read_position;
             self.read_position += 1;
-            self.column += 1;
         }
     }
 

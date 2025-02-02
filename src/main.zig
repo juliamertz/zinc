@@ -39,7 +39,7 @@ pub fn main() !void {
 
             var parser = Parser.init(content, arena.allocator());
             const nodes = parser.parseNodes() catch |err| {
-                parser.printDebug("Parsing errors", true);
+                parser.debug("Parsing errors", true);
                 return err;
             };
             try utils.printAst(arena.allocator(), nodes);

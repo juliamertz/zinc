@@ -86,8 +86,6 @@ pub const RangePattern = struct {
     right: i64,
 };
 
-/// enum representing all valid pattern kinds
-/// TODO: list matching, enum matching (when they're implemented)
 pub const Pattern = union(enum) {
     range: RangePattern,
     literal: Expression,

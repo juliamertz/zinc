@@ -21,7 +21,7 @@ const print_trace = true;
 pub fn run(alloc: std.mem.Allocator, interpreter: *interp.Interpreter, content: []const u8) !void {
     var parser = Parser.init(content, alloc);
     const nodes = parser.parseNodes() catch |err| {
-        parser.printDebug("Parsing errors", true);
+        parser.debug("Parsing errors", true);
         if (print_trace) return err;
         std.process.exit(1);
     };
