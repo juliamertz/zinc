@@ -25,10 +25,13 @@ pub fn repeatString(allocator: std.mem.Allocator, s: []const u8, n: usize) ![]u8
 }
 
 pub fn printAst(alloc: std.mem.Allocator, nodes: []ast.Node) !void {
-    try pretty.printWriter(alloc, std.io.getStdErr().writer(), nodes, .{
+    const stdout = std.io.getStdOut().writer();
+    const printed = try pretty.dump(alloc, nodes, .{
         .print_extra_empty_line = true,
         .max_depth = std.math.maxInt(u8),
         .ptr_skip_dup_unfold = false,
         .show_type_names = false,
     });
+
+    try stdout.writeAll(printed);
 }

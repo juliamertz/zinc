@@ -4,8 +4,8 @@
     .minimum_zig_version = "0.14.0",
     .dependencies = .{
         .pretty = .{
-            .url = "https://github.com/juliamertz/pretty/archive/refs/tags/dev.tar.gz",
-            .hash = "12203b70b87bb3c925094717ebccf7a5a9ab8c84574cdd7eb5286a3699da0b9e83d5",
+            .url = "https://github.com/timfayz/pretty/archive/refs/heads/main.tar.gz",
+            .hash = "122093f49b520fbbe26b1143100f40a3ba58df5ade6cf4e0e182af38e594a50a8582",
         },
     },
 
