@@ -83,9 +83,8 @@ pub const Lexer = struct {
     position: usize = 0,
     content: []const u8,
 
-    line: usize = 0, // for pretty debug prints
-    // TODO: keep track of current column position
-    column: usize = 0, // for pretty debug prints
+    line: usize = 0,
+    column: usize = 0,
 
     const Self = @This();
 

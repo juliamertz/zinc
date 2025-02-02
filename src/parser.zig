@@ -351,7 +351,7 @@ pub const Parser = struct {
         try self.consumeToken(.rsquirly);
 
         return ast.MatchExpression{
-            .value = value, // TODO:
+            .value = value,
             .arms = arms.items,
         };
     }
@@ -469,25 +469,17 @@ pub const Parser = struct {
         };
     }
 
-    // FIX: This isn't parse right yet
     fn parseFunctionLiteral(self: *Self) ErrorKind!ast.FunctionLiteral {
-        debug("in parse func literal, curr: {any}, peek: {any}\n", .{ self.curr_token, self.peek_token });
         try self.consumeKeyword(lex.Keyword.function);
         try self.consumeToken(lex.Token.lparen);
 
-        debug("in parse func literal, curr: {any}, peek: {any}\n", .{ self.curr_token, self.peek_token });
         var arguments = Array(ast.FunctionArgument).init(self.alloc);
         while (!eql(self.curr_token, .rparen)) {
             const arg = try self.parseFunctionArgument();
             arguments.append(arg) catch @panic("unable to append");
         }
-        debug("in parse func literal, curr: {any}, peek: {any}\n", .{ self.curr_token, self.peek_token });
-        // debug("arguments: {any}\n", .{arguments});
         try self.consumeToken(lex.Token.rparen);
-        debug("in parse func literal, curr: {any}, peek: {any}\n", .{ self.curr_token, self.peek_token });
         const body = try self.parseBlock();
-        debug("in parse func literal, curr: {any}, peek: {any}\n", .{ self.curr_token, self.peek_token });
-        debug("body: {any}\n", .{body});
 
         return ast.FunctionLiteral{
             .arguments = arguments.items,
@@ -572,8 +564,6 @@ pub const Parser = struct {
                 .function => blk: {
                     const func = self.alloc.create(ast.FunctionLiteral) catch @panic("unable to allocate");
                     func.* = try self.parseFunctionLiteral();
-                    debug("parsed function literal: {any}\n", .{func});
-                    debug("curr: {any}, peek: {any}\n", .{ self.curr_token, self.peek_token });
                     break :blk .{
                         .function_literal = func,
                     };
