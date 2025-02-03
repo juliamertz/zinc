@@ -248,8 +248,8 @@ pub const Parser = struct {
                 break :blk .greater_than;
             },
             .keyword => |val| switch (val) {
-                .and_token => .and_operator,
-                .or_token => .or_operator,
+                .@"and" => .and_operator,
+                .@"or" => .or_operator,
                 else => return self.errorMessage(
                     error.IllegalKeyword,
                     "The keyword {any} is not allowed here",
@@ -294,11 +294,11 @@ pub const Parser = struct {
         const statement: ast.Statement = switch (self.curr_token) {
             .keyword => |keyword| switch (keyword) {
                 .let => .{ .let = try self.parseLetStatement() },
-                .return_token => .{ .return_ = try self.parseReturnStatement() },
                 .function => .{ .function = try self.parseFunctionStatement() },
-                .if_token => .{ .if_else = try self.parseIfElseStatement() },
-                .for_token => .{ .for_loop = try self.parseForStatement() },
-                .while_token => .{ .while_loop = try self.parseWhileStatement() },
+                .@"return" => .{ .return_ = try self.parseReturnStatement() },
+                .@"if" => .{ .if_else = try self.parseIfElseStatement() },
+                .@"for" => .{ .for_loop = try self.parseForStatement() },
+                .@"while" => .{ .while_loop = try self.parseWhileStatement() },
                 else => return self.errorMessage(
                     ErrorKind.IllegalKeyword,
                     "Invalid keyword {any} while parsing statement",
@@ -322,12 +322,12 @@ pub const Parser = struct {
     }
 
     fn parseOptionalElseStatement(self: *Self) ErrorKind!?ast.Block {
-        try self.consumeKeyword(.else_token);
+        try self.consumeKeyword(.@"else");
         return try self.parseBlock();
     }
 
     fn parseIfElseStatement(self: *Self) ErrorKind!ast.IfStatement {
-        try self.consumeKeyword(.if_token);
+        try self.consumeKeyword(.@"if");
         const expr = try self.parseExpression();
         const block = try self.parseBlock();
         // FIX: legitimate errors while parsing else statements are ignored
@@ -556,11 +556,11 @@ pub const Parser = struct {
                 break :blk .{ .integer_literal = val };
             },
             .keyword => |val| switch (val) {
-                .true_token => blk: {
+                .@"true" => blk: {
                     self.next();
                     break :blk .{ .boolean = true };
                 },
-                .false_token => blk: {
+                .@"false" => blk: {
                     self.next();
                     break :blk .{ .boolean = false };
                 },
@@ -617,7 +617,7 @@ pub const Parser = struct {
     }
 
     fn parseForStatement(self: *Self) ErrorKind!ast.ForStatement {
-        try self.expectKeyword(.for_token);
+        try self.expectKeyword(.@"for");
         self.next();
 
         var identifiers = Array(ast.Identifier).init(self.alloc);
@@ -645,7 +645,7 @@ pub const Parser = struct {
     }
 
     fn parseWhileStatement(self: *Self) ErrorKind!ast.WhileStatement {
-        try self.expectKeyword(.while_token);
+        try self.expectKeyword(.@"while");
         self.next();
 
         const condition = try self.parseExpression();
