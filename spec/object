@@ -1,0 +1,11 @@
+let myobj = {
+    name: "bob",
+    age: 29,
+    child: {
+        name: "ron",
+        age: 15,
+    },
+};
+
+let field = myobj.name;
+let child_field = myobj.child.name;

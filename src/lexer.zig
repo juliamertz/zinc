@@ -17,8 +17,8 @@ pub const Keyword = enum {
     @"return",
     @"if",
     @"else",
-    @"true",
-    @"false",
+    true,
+    false,
 
     pub fn fromStr(str: []const u8) ?Keyword {
         const map = std.StaticStringMap(Keyword).initComptime(.{
@@ -37,8 +37,8 @@ pub const Keyword = enum {
             .{ "return", .@"return" },
             .{ "if", .@"if" },
             .{ "else", .@"else" },
-            .{ "true", .@"true" },
-            .{ "false", .@"false" },
+            .{ "true", .true },
+            .{ "false", .false },
         });
         return map.get(str);
     }
@@ -284,7 +284,7 @@ test "Lexer - let statement" {
             .{ .keyword = .let },
             .{ .ident = "woof" },
             .equal,
-            .{ .keyword = .true_token },
+            .{ .keyword = .true },
             .semicolon,
             .eof,
         },

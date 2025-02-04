@@ -26,20 +26,30 @@ pub const Expression = union(enum) {
     prefix_operator: *PrefixBinaryExpression,
     infix_operator: *InfixBinaryExpression,
     index: *IndexExpression,
-    integer_literal: i64,
-    function_literal: *FunctionLiteral,
     identifier: []const u8,
     function_call: *FunctionCall,
-    match: *MatchExpression,
-    string_literal: []const u8,
     boolean: bool,
     list: []Expression,
+    match: *MatchExpression,
+    string_literal: []const u8,
+    integer_literal: i64,
+    function_literal: *FunctionLiteral,
+    object_literal: *ObjectLiteral,
 };
 
 pub const Identifier = []const u8;
 
 pub const GroupedExpression = struct {
     expression: Expression,
+};
+
+pub const ObjectField = struct {
+    identifier: Identifier,
+    value: Expression,
+};
+
+pub const ObjectLiteral = struct {
+    fields: []ObjectField,
 };
 
 pub const FunctionLiteral = struct {
@@ -147,6 +157,7 @@ pub const InfixOperator = enum {
     equal,
     assign,
 
+    chain,
     range,
 
     add,

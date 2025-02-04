@@ -225,27 +225,17 @@ pub const Parser = struct {
             .minus => .subtract,
             .asterisk => .multiply,
             .forward_slash => .divide,
-            .dot => blk: {
-                if (eql(self.peek_token, .dot)) {
-                    break :blk .range;
-                }
-                return self.errorMessage(
-                    ErrorKind.OperatorExpected,
-                    "use .. for range operator",
-                    .{},
-                );
+            .dot => switch (self.peek_token) {
+                .dot => .range,
+                else => .chain,
             },
-            .langle => blk: {
-                if (self.peek_token == .equal) {
-                    break :blk .less_than_or_eq;
-                }
-                break :blk .less_than;
+            .langle => switch (self.peek_token) {
+                .equal => .less_than_or_eq,
+                else => .less_than,
             },
-            .rangle => blk: {
-                if (self.peek_token == .equal) {
-                    break :blk .greater_than_or_eq;
-                }
-                break :blk .greater_than;
+            .rangle => switch (self.peek_token) {
+                .equal => .greater_than_or_eq,
+                else => .greater_than,
             },
             .keyword => |val| switch (val) {
                 .@"and" => .and_operator,
@@ -556,11 +546,11 @@ pub const Parser = struct {
                 break :blk .{ .integer_literal = val };
             },
             .keyword => |val| switch (val) {
-                .@"true" => blk: {
+                .true => blk: {
                     self.next();
                     break :blk .{ .boolean = true };
                 },
-                .@"false" => blk: {
+                .false => blk: {
                     self.next();
                     break :blk .{ .boolean = false };
                 },
@@ -595,6 +585,11 @@ pub const Parser = struct {
                 const expr = self.alloc.create(ast.GroupedExpression) catch @panic("unable to allocate");
                 expr.* = try self.parseGroupedExpression();
                 break :blk .{ .grouped_expression = expr };
+            },
+            .lsquirly => blk: {
+                const expr = self.alloc.create(ast.ObjectLiteral) catch @panic("unable to allocate");
+                expr.* = try self.parseObjectLiteral();
+                break :blk .{ .object_literal = expr };
             },
             .lbracket => .{ .list = try self.parseListExpression() },
             .eof => unreachable,
@@ -654,6 +649,33 @@ pub const Parser = struct {
         return ast.WhileStatement{
             .condition = condition,
             .body = block,
+        };
+    }
+
+    fn parseObjectField(self: *Self) ErrorKind!ast.ObjectField {
+        const ident = try self.parseIdentifier();
+        try self.consumeToken(.colon);
+        const value = try self.parseExpression();
+
+        return ast.ObjectField{
+            .identifier = ident,
+            .value = value,
+        };
+    }
+
+    fn parseObjectLiteral(self: *Self) ErrorKind!ast.ObjectLiteral {
+        try self.consumeToken(.lsquirly);
+
+        var fields = Array(ast.ObjectField).init(self.alloc);
+        while (self.curr_token != .rsquirly) {
+            const field = try self.parseObjectField();
+            fields.append(field) catch @panic("unable to append pattern");
+            if (self.curr_token == .comma) self.next();
+        }
+
+        try self.consumeToken(.rsquirly);
+        return ast.ObjectLiteral{
+            .fields = fields.items,
         };
     }
 
