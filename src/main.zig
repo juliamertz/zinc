@@ -26,7 +26,7 @@ pub fn main() !void {
             const content = try std.fs.cwd().readFileAlloc(arena.allocator(), filepath, max);
             // try stdout.print("content:\n\n{s}\n", .{content});
 
-            var interpreter = interp.Interpreter.new(arena.allocator());
+            var interpreter = interp.Interpreter.init(arena.allocator());
             try repl.run(arena.allocator(), &interpreter, content);
         } else if (eql(subcommand, "parse")) {
             const filepath = args.next() orelse @panic("no filepath given");

@@ -65,12 +65,15 @@ pub const Scope = struct {
         return null;
     }
 
-    // binds key to value in local scope
-    fn bind() void {}
-
-    // attempts to assign to existing key in local or any parent scope
-    fn assignGlobal(self: *Self, key: []const u8, value: Value) void {
+    /// binds key to value in local scope
+    /// will overwrite any existing variable
+    fn bind(self: *Self, key: []const u8, value: Value) void {
         self.variables.put(key, value) catch @panic("unable to append");
+    }
+
+    /// attempts to assign to existing key in local or any parent scope
+    fn assignGlobal(_: *Self, key: []const u8, value: Value) void {
+        std.debug.panic("TODO: assign global in scope, {s}: {any}", .{ key, value });
     }
 };
 
@@ -81,7 +84,7 @@ pub const Interpreter = struct {
 
     const Self = @This();
 
-    pub fn new(alloc: std.mem.Allocator) Self {
+    pub fn init(alloc: std.mem.Allocator) Self {
         return Self{
             .alloc = alloc,
             .errors = Array(EvalError).init(alloc),
@@ -169,6 +172,7 @@ pub const Interpreter = struct {
             },
             .assign => |stmnt| {
                 if (!scope.exists(stmnt.identifier)) {
+                    std.debug.print("tried to assign to non existing variable: {s}\n", .{stmnt.identifier});
                     return ErrorKind.NoSuchVariable;
                 }
 
@@ -192,7 +196,14 @@ pub const Interpreter = struct {
             .infix_operator => |val| try self.evaluateInfixBinaryExpression(val.*, scope),
             .prefix_operator => |val| try self.evaluatePrefixBinaryExpression(val.*, scope),
             .grouped_expression => |group| try self.evaluateExpression(group.expression, scope),
-            .identifier => |val| scope.retrieve(val) orelse ErrorKind.NoSuchVariable,
+            .identifier => |ident| blk: {
+                if (scope.retrieve(ident)) |value| {
+                    break :blk value;
+                } else {
+                    std.debug.print("tried to get to non existing variable: {s}\n", .{ident});
+                    break :blk ErrorKind.NoSuchVariable;
+                }
+            },
             .boolean => |val| .{ .boolean = val },
             .string_literal => |val| .{ .string = val },
             .function_literal => |f| .{ .function = .{ .body = f.body, .arguments = f.arguments } },
@@ -209,6 +220,8 @@ pub const Interpreter = struct {
                         const identifier = func_ptr.arguments[index].identifier;
                         const value = try self.evaluateExpression(argument, &func_scope);
                         func_scope.variables.put(identifier, value) catch @panic("unable to append function to scope");
+
+                        std.debug.print("putting variable in function scope: {s}\n", .{identifier});
                     }
 
                     const res = self.evaluateFunction(func_ptr.body, func_ptr.arguments, &func_scope);
@@ -229,24 +242,24 @@ pub const Interpreter = struct {
         _: []ast.FunctionArgument,
         scope: *Scope,
     ) !Value {
-        // TODO: include arguments in scope
-        for (body.nodes) |node| {
-            switch (node) {
-                .statement => |statement| {
-                    switch (statement) {
-                        .return_ => |val| return try self.evaluateExpression(val.value, scope),
-                        else => {
-                            return try self.evaluateStatement(statement, &self.root) orelse Value.null;
-                        },
-                    }
-                },
-                .expression => |expr| {
-                    return try self.evaluateExpression(expr, scope);
-                },
+        for (body.nodes) |node| switch (node) {
+            .statement => |statement| {
+                switch (statement) {
+                    .return_ => |val| {
+                        std.debug.print("encountered return statement: {any}\n", .{val});
+                        return try self.evaluateExpression(val.value, scope);
+                    },
+                    else => {
+                        _ = try self.evaluateStatement(statement, scope);
+                    },
+                }
+            },
+            .expression => |expr| {
+                return try self.evaluateExpression(expr, scope);
+            },
 
-                else => std.debug.panic("Unhandled node in evaluate function: {any}", .{node}),
-            }
-        }
+            else => std.debug.panic("Unhandled node in evaluate function: {any}", .{node}),
+        };
 
         return .null;
     }

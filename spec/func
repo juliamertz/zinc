@@ -1,5 +1,5 @@
 func greet_informal(name) {
-  let message = "hi " + name;
+  let message = "Hi there " + name;
   return message;
 };
 

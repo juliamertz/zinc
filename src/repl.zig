@@ -27,12 +27,14 @@ pub fn run(alloc: std.mem.Allocator, interpreter: *interp.Interpreter, content: 
     };
 
     try utils.printAst(alloc, nodes);
+    std.debug.print("\n\n", .{});
+
     try interpreter.evaluate(nodes);
 }
 
 pub fn start() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    var interpreter = interp.Interpreter.new(arena.allocator());
+    var interpreter = interp.Interpreter.init(arena.allocator());
 
     while (true) {
         defer arena.deinit();
