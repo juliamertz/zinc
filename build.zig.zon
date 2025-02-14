@@ -5,7 +5,7 @@
     .dependencies = .{
         .pretty = .{
             .url = "https://github.com/timfayz/pretty/archive/refs/heads/main.tar.gz",
-            .hash = "122093f49b520fbbe26b1143100f40a3ba58df5ade6cf4e0e182af38e594a50a8582",
+            .hash = "122013bcb933149ebe63daff3560800b643884e2b11d29c95d02c38ff316b0f579c5",
         },
     },
 

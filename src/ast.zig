@@ -52,11 +52,6 @@ pub const ObjectLiteral = struct {
     fields: []ObjectField,
 };
 
-pub const FunctionLiteral = struct {
-    arguments: []FunctionArgument,
-    body: Block,
-};
-
 /// range holding left/right expressions of unknown type
 pub const RangeExpression = struct {
     left: Expression,
@@ -108,6 +103,11 @@ pub const FunctionArgument = struct {
 
 pub const FunctionStatement = struct {
     identifier: []const u8,
+    arguments: []FunctionArgument,
+    body: Block,
+};
+
+pub const FunctionLiteral = struct {
     arguments: []FunctionArgument,
     body: Block,
 };

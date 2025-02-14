@@ -1,14 +1,20 @@
 const std = @import("std");
 const ast = @import("ast.zig");
+const pretty = @import("pretty");
 
 const Array = std.ArrayList;
 const StringHashMap = std.StringHashMap;
 
-pub const Value = union(enum) {
+const FunctionValue = struct {
+    arguments: []ast.FunctionArgument,
+    body: ast.Block,
+};
+
+const Value = union(enum) {
     string: []const u8,
     integer: i64,
     boolean: bool,
-    function: ast.FunctionStatement,
+    function: FunctionValue,
     null, // TODO: remove this sometime when there is a a type system (soontm)
 };
 
@@ -134,7 +140,12 @@ pub const Interpreter = struct {
             .function => |func| {
                 scope.variables.put(
                     func.identifier,
-                    .{ .function = func },
+                    .{
+                        .function = FunctionValue{
+                            .arguments = func.arguments,
+                            .body = func.body,
+                        },
+                    },
                 ) catch @panic("unable to append");
             },
             .let => |let| {
@@ -166,9 +177,10 @@ pub const Interpreter = struct {
                     try self.evaluateExpression(stmnt.value, scope),
                 ) catch @panic("unable to append");
             },
+
             .return_ => return ErrorKind.IllegalReturn,
 
-            else => @panic("todo"),
+            else => std.debug.panic("Unhandled statement: {any}", .{statement}),
         }
 
         return null;
@@ -179,42 +191,46 @@ pub const Interpreter = struct {
             .integer_literal => |val| .{ .integer = val },
             .infix_operator => |val| try self.evaluateInfixBinaryExpression(val.*, scope),
             .prefix_operator => |val| try self.evaluatePrefixBinaryExpression(val.*, scope),
-            .identifier => |val| {
-                return scope.retrieve(val) orelse ErrorKind.NoSuchVariable;
-                // return scope.variables.get(val) orelse EvalError.NoSuchVariable;
-            },
+            .grouped_expression => |group| try self.evaluateExpression(group.expression, scope),
+            .identifier => |val| scope.retrieve(val) orelse ErrorKind.NoSuchVariable,
             .boolean => |val| .{ .boolean = val },
             .string_literal => |val| .{ .string = val },
+            .function_literal => |f| .{ .function = .{ .body = f.body, .arguments = f.arguments } },
+
             .function_call => |func| {
                 if (scope.variables.get(func.identifier)) |ptr| {
-                    const func_ptr: ast.FunctionStatement = switch (ptr) {
+                    const func_ptr = switch (ptr) {
                         .function => |v| v,
                         else => return ErrorKind.NotAFunction,
                     };
 
-                    const function_scope = scope;
+                    var func_scope = Scope.init(self.alloc, scope);
                     for (func.arguments, 0..) |argument, index| {
                         const identifier = func_ptr.arguments[index].identifier;
-                        const value = try self.evaluateExpression(argument, function_scope);
-                        function_scope.variables.put(identifier, value) catch @panic("unable to append function to scope");
+                        const value = try self.evaluateExpression(argument, &func_scope);
+                        func_scope.variables.put(identifier, value) catch @panic("unable to append function to scope");
                     }
 
-                    const res = self.evaluateFunction(func_ptr, function_scope);
+                    const res = self.evaluateFunction(func_ptr.body, func_ptr.arguments, &func_scope);
+
                     return res;
                 }
 
                 return ErrorKind.NoSuchFunction;
             },
-            .grouped_expression => |group| {
-                return try self.evaluateExpression(group.expression, scope);
-            },
 
-            else => @panic("todo"),
+            else => std.debug.panic("Unhandled expression: {any}", .{expr}),
         };
     }
 
-    fn evaluateFunction(self: *Self, func: ast.FunctionStatement, scope: *Scope) !Value {
-        for (func.body.nodes) |node| {
+    fn evaluateFunction(
+        self: *Self,
+        body: ast.Block,
+        _: []ast.FunctionArgument,
+        scope: *Scope,
+    ) !Value {
+        // TODO: include arguments in scope
+        for (body.nodes) |node| {
             switch (node) {
                 .statement => |statement| {
                     switch (statement) {
@@ -227,7 +243,8 @@ pub const Interpreter = struct {
                 .expression => |expr| {
                     return try self.evaluateExpression(expr, scope);
                 },
-                else => @panic("todo!"),
+
+                else => std.debug.panic("Unhandled node in evaluate function: {any}", .{node}),
             }
         }
 

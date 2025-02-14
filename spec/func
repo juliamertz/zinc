@@ -1,9 +1,12 @@
-func greet(name) {
-  let a = 10;
-};
-
-let greeter = func(name) {
-  let message = "hello " + name;
+func greet_informal(name) {
+  let message = "hi " + name;
   return message;
 };
+
+let greet_formal = func(name) {
+  let message = "Hello " + name + ".";
+  return message;
+};
+
+let greeting = greet_formal("Bob");
 
