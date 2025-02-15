@@ -1,7 +1,9 @@
 let num = 100;
 
-if num > 50 {
-  let b = 250 - num;
+let a = if num > 50 {
+  20;
+  40
 } else {
-  let c = 10;
+  10;
+  20
 };

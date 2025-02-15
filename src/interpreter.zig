@@ -109,12 +109,12 @@ pub const Interpreter = struct {
         try self.printDebug();
     }
 
+    /// Evaluate block line by line and return last value
     fn evaluateBlock(self: *Self, module: ast.Block, scope: *Scope) ErrorKind!Value {
         var res: Value = .null;
         for (module.nodes, 0..) |node, i| {
-            const val = try self.evaluateNode(node, scope) orelse Value.null;
-            if (i == module.nodes.len - 1) {
-                res = val;
+            if (try self.evaluateNode(node, scope)) |value| {
+                if (i == module.nodes.len - 1) res = value;
             }
         }
         return res;
@@ -157,19 +157,6 @@ pub const Interpreter = struct {
                     try self.evaluateExpression(let.value, scope),
                 ) catch @panic("unable to append");
             },
-            .if_else => |stmnt| {
-                const value = try self.evaluateExpression(stmnt.condition, scope);
-                switch (value) {
-                    .boolean => |do| {
-                        if (do) {
-                            var if_scope = Scope.init(self.alloc, scope);
-                            // TODO: return last value without return keyword
-                            _ = try self.evaluateBlock(stmnt.consequence, &if_scope);
-                        }
-                    },
-                    else => @panic("boolean expected"),
-                }
-            },
             .assign => |stmnt| {
                 if (!scope.exists(stmnt.identifier)) {
                     std.debug.print("tried to assign to non existing variable: {s}\n", .{stmnt.identifier});
@@ -182,7 +169,11 @@ pub const Interpreter = struct {
                 ) catch @panic("unable to append");
             },
 
-            .return_ => return ErrorKind.IllegalReturn,
+            .implicit_return => |stmnt| {
+                return try self.evaluateExpression(stmnt.value, scope);
+            },
+
+            .@"return" => return ErrorKind.IllegalReturn,
 
             else => std.debug.panic("Unhandled statement: {any}", .{statement}),
         }
@@ -231,6 +222,20 @@ pub const Interpreter = struct {
 
                 return ErrorKind.NoSuchFunction;
             },
+            .if_else => |stmnt| {
+                const value = try self.evaluateExpression(stmnt.condition, scope);
+                switch (value) {
+                    .boolean => |do| {
+                        if (do) {
+                            var if_scope = Scope.init(self.alloc, scope);
+                            // TODO: return last value without return keyword
+                            return try self.evaluateBlock(stmnt.consequence, &if_scope);
+                        }
+                    },
+                    else => @panic("boolean expected"),
+                }
+                return Value.null;
+            },
 
             else => std.debug.panic("Unhandled expression: {any}", .{expr}),
         };
@@ -245,7 +250,7 @@ pub const Interpreter = struct {
         for (body.nodes) |node| switch (node) {
             .statement => |statement| {
                 switch (statement) {
-                    .return_ => |val| {
+                    .@"return" => |val| {
                         std.debug.print("encountered return statement: {any}\n", .{val});
                         return try self.evaluateExpression(val.value, scope);
                     },

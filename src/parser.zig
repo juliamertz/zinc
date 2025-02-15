@@ -141,26 +141,36 @@ pub const Parser = struct {
     }
 
     fn parseNode(self: *Self) ErrorKind!ast.Node {
-        switch (self.curr_token) {
-            .keyword => return .{ .statement = try self.parseStatement() },
-            .ident => return {
+        return switch (self.curr_token) {
+            .keyword => .{ .statement = try self.parseStatement() },
+            .ident => blk: {
                 const ident = try self.parseIdentifier();
                 try self.consumeToken(.equal);
                 const expr = try self.parseExpression();
                 try self.consumeToken(.semicolon);
 
-                return .{
-                    .statement = .{ .assign = .{
-                        .identifier = ident,
-                        .value = expr,
-                    } },
+                break :blk .{
+                    .statement = .{
+                        .assign = .{
+                            .identifier = ident,
+                            .value = expr,
+                        },
+                    },
                 };
             },
-
-            else => {},
-        }
-
-        return .{ .expression = try self.parseExpression() };
+            else => blk: {
+                const expr = try self.parseExpression();
+                self.expectToken(.semicolon) catch {
+                    break :blk .{
+                        .statement = .{
+                            .implicit_return = .{ .value = expr },
+                        },
+                    };
+                };
+                try self.consumeToken(.semicolon);
+                break :blk .{ .expression = expr };
+            },
+        };
     }
 
     /// Parse block expression including surrounding curly braces
@@ -188,25 +198,25 @@ pub const Parser = struct {
         return ident;
     }
 
-    fn parseIntegerLiteral(self: *Self) ErrorKind!i64 {
-        const int = switch (self.curr_token) {
-            .integer => |val| std.fmt.parseInt(i64, val, 10) catch {
-                return self.errorMessage(
-                    error.InvalidInteger,
-                    "expected next token to be a valid integer, got {any}",
-                    .{self.curr_token},
-                );
-            },
-            else => self.errorMessage(
-                error.IntegerExpected,
-                "expected next token to be an integer, got {any}",
-                .{self.curr_token},
-            ),
-        };
-
-        self.next();
-        return int;
-    }
+    // fn parseIntegerLiteral(self: *Self) ErrorKind!i64 {
+    //     const int = switch (self.curr_token) {
+    //         .integer => |val| std.fmt.parseInt(i64, val, 10) catch {
+    //             return self.errorMessage(
+    //                 error.InvalidInteger,
+    //                 "expected next token to be a valid integer, got {any}",
+    //                 .{self.curr_token},
+    //             );
+    //         },
+    //         else => self.errorMessage(
+    //             error.IntegerExpected,
+    //             "expected next token to be an integer, got {any}",
+    //             .{self.curr_token},
+    //         ),
+    //     };
+    //
+    //     self.next();
+    //     return int;
+    // }
 
     // Check if current token is a prefix operator
     fn scanPrefixOperator(self: *Self) ?ast.PrefixOperator {
@@ -285,8 +295,7 @@ pub const Parser = struct {
             .keyword => |keyword| switch (keyword) {
                 .let => .{ .let = try self.parseLetStatement() },
                 .function => .{ .function = try self.parseFunctionStatement() },
-                .@"return" => .{ .return_ = try self.parseReturnStatement() },
-                .@"if" => .{ .if_else = try self.parseIfElseStatement() },
+                .@"return" => .{ .@"return" = try self.parseReturnStatement() },
                 .@"for" => .{ .for_loop = try self.parseForStatement() },
                 .@"while" => .{ .while_loop = try self.parseWhileStatement() },
                 else => return self.errorMessage(
@@ -316,15 +325,14 @@ pub const Parser = struct {
         return try self.parseBlock();
     }
 
-    fn parseIfElseStatement(self: *Self) ErrorKind!ast.IfStatement {
+    fn parseIfElseExpression(self: *Self) ErrorKind!ast.IfExpression {
         try self.consumeKeyword(.@"if");
         const expr = try self.parseExpression();
         const block = try self.parseBlock();
         // FIX: legitimate errors while parsing else statements are ignored
         const alternative = self.parseOptionalElseStatement() catch null;
-        try self.consumeToken(.semicolon);
 
-        return ast.IfStatement{
+        return ast.IfExpression{
             .condition = expr,
             .consequence = block,
             .alternative = alternative,
@@ -565,6 +573,11 @@ pub const Parser = struct {
                     const expr = self.alloc.create(ast.MatchExpression) catch @panic("unable to allocate");
                     expr.* = try self.parseMatchExpression();
                     break :blk .{ .match = expr };
+                },
+                .@"if" => blk: {
+                    const expr = self.alloc.create(ast.IfExpression) catch @panic("unable to allocate");
+                    expr.* = try self.parseIfElseExpression();
+                    break :blk .{ .if_else = expr };
                 },
                 else => return self.errorMessage(ErrorKind.IllegalKeyword, "", .{}),
             },

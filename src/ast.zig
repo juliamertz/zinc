@@ -14,8 +14,8 @@ pub const Node = union(enum) {
 pub const Statement = union(enum) {
     let: LetStatement,
     function: FunctionStatement,
-    return_: ReturnStatement,
-    if_else: IfStatement,
+    @"return": ReturnStatement,
+    implicit_return: ImplicitReturn,
     assign: AssingStatement,
     for_loop: ForStatement,
     while_loop: WhileStatement,
@@ -27,6 +27,7 @@ pub const Expression = union(enum) {
     infix_operator: *InfixBinaryExpression,
     index: *IndexExpression,
     identifier: []const u8,
+    if_else: *IfExpression,
     function_call: *FunctionCall,
     boolean: bool,
     list: []Expression,
@@ -69,7 +70,7 @@ pub const LetStatement = struct {
     mutable: bool,
 };
 
-pub const IfStatement = struct {
+pub const IfExpression = struct {
     condition: Expression,
     consequence: Block,
     alternative: ?Block,
@@ -126,6 +127,12 @@ pub const ForStatement = struct {
 pub const WhileStatement = struct {
     condition: Expression,
     body: Block,
+};
+
+/// Las value in a block without a leading semicolon
+/// implicitly returning the value for the current block
+pub const ImplicitReturn = struct {
+    value: Expression,
 };
 
 pub const ReturnStatement = struct {
