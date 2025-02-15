@@ -22,6 +22,7 @@ pub const ErrorKind = error{
     InvalidToken, // Maybe this is a bit too general
 
     UnexpectedEof,
+    OutOfMemory,
 };
 
 pub const ParseError = struct {
@@ -57,11 +58,11 @@ pub const Parser = struct {
 
     /// Append error message to self.errors
     fn errorMessage(self: *Self, kind: ErrorKind, comptime msg: []const u8, args: anytype) ErrorKind {
-        self.errors.append(ParseError{
+        try self.errors.append(ParseError{
             .kind = kind,
             .message = std.fmt.allocPrint(self.alloc, msg, args) catch "failed to print message??",
             .location = std.zig.findLineColumn(self.lexer.content, self.lexer.position),
-        }) catch @panic("unable to allocate for ParseError");
+        });
         return kind;
     }
 
@@ -134,7 +135,7 @@ pub const Parser = struct {
                 return err;
             };
 
-            nodes.append(node) catch @panic("unable to append");
+            try nodes.append(node);
         }
 
         return nodes.items;
@@ -347,7 +348,7 @@ pub const Parser = struct {
         var arms = Array(ast.MatchArm).init(self.alloc);
         while (self.curr_token != .rsquirly) {
             const arm = try self.parseMatchArm();
-            arms.append(arm) catch @panic("unable to append");
+            try arms.append(arm);
         }
 
         try self.consumeToken(.rsquirly);
@@ -444,12 +445,12 @@ pub const Parser = struct {
         var patterns = Array(ast.Pattern).init(self.alloc);
 
         const pattern = try self.parseMatchPattern();
-        patterns.append(pattern) catch @panic("unable to append pattern");
+        try patterns.append(pattern);
 
         while (self.curr_token == .pipe) {
             self.next();
             const p = try self.parseMatchPattern();
-            patterns.append(p) catch @panic("unable to append pattern");
+            try patterns.append(p);
         }
 
         return patterns.items;
@@ -462,7 +463,7 @@ pub const Parser = struct {
 
         while (!eql(self.curr_token, .rparen)) {
             const arg = try self.parseExpression();
-            arguments.append(arg) catch @panic("unable to append");
+            try arguments.append(arg);
         }
 
         try self.consumeToken(.rparen);
@@ -480,7 +481,7 @@ pub const Parser = struct {
         var arguments = Array(ast.FunctionArgument).init(self.alloc);
         while (!eql(self.curr_token, .rparen)) {
             const arg = try self.parseFunctionArgument();
-            arguments.append(arg) catch @panic("unable to append");
+            try arguments.append(arg);
         }
         try self.consumeToken(lex.Token.rparen);
         const body = try self.parseBlock();
@@ -499,7 +500,7 @@ pub const Parser = struct {
         var arguments = Array(ast.FunctionArgument).init(self.alloc);
         while (!eql(self.curr_token, .rparen)) {
             const arg = try self.parseFunctionArgument();
-            arguments.append(arg) catch @panic("unable to append");
+            try arguments.append(arg);
         }
         try self.consumeToken(lex.Token.rparen);
 
@@ -563,19 +564,19 @@ pub const Parser = struct {
                     break :blk .{ .boolean = false };
                 },
                 .function => blk: {
-                    const func = self.alloc.create(ast.FunctionLiteral) catch @panic("unable to allocate");
+                    const func = try self.alloc.create(ast.FunctionLiteral);
                     func.* = try self.parseFunctionLiteral();
                     break :blk .{
                         .function_literal = func,
                     };
                 },
                 .match => blk: {
-                    const expr = self.alloc.create(ast.MatchExpression) catch @panic("unable to allocate");
+                    const expr = try self.alloc.create(ast.MatchExpression);
                     expr.* = try self.parseMatchExpression();
                     break :blk .{ .match = expr };
                 },
                 .@"if" => blk: {
-                    const expr = self.alloc.create(ast.IfExpression) catch @panic("unable to allocate");
+                    const expr = try self.alloc.create(ast.IfExpression);
                     expr.* = try self.parseIfElseExpression();
                     break :blk .{ .if_else = expr };
                 },
@@ -583,7 +584,7 @@ pub const Parser = struct {
             },
             .ident => |ident| blk: {
                 if (eql(self.peek_token, .lparen)) {
-                    const expr = self.alloc.create(ast.FunctionCall) catch @panic("unable to allocate");
+                    const expr = try self.alloc.create(ast.FunctionCall);
                     expr.* = try self.parseFunctionCallExpression(ident);
                     break :blk .{ .function_call = expr };
                 }
@@ -595,12 +596,12 @@ pub const Parser = struct {
                 break :blk .{ .string_literal = value };
             },
             .lparen => blk: {
-                const expr = self.alloc.create(ast.GroupedExpression) catch @panic("unable to allocate");
+                const expr = try self.alloc.create(ast.GroupedExpression);
                 expr.* = try self.parseGroupedExpression();
                 break :blk .{ .grouped_expression = expr };
             },
             .lsquirly => blk: {
-                const expr = self.alloc.create(ast.ObjectLiteral) catch @panic("unable to allocate");
+                const expr = try self.alloc.create(ast.ObjectLiteral);
                 expr.* = try self.parseObjectLiteral();
                 break :blk .{ .object_literal = expr };
             },
@@ -610,7 +611,7 @@ pub const Parser = struct {
         };
 
         if (self.curr_token == .lbracket) {
-            const index_expr = self.alloc.create(ast.IndexExpression) catch @panic("unable to allocate");
+            const index_expr = try self.alloc.create(ast.IndexExpression);
             index_expr.* = try self.parseIndexExpression(expr);
 
             return .{ .index = index_expr };
@@ -636,7 +637,7 @@ pub const Parser = struct {
                 else => {},
             }
             const ident = try self.parseIdentifier();
-            identifiers.append(ident) catch @panic("unable to append identifier");
+            try identifiers.append(ident);
         }
 
         try self.expectKeyword(.in);
@@ -682,7 +683,7 @@ pub const Parser = struct {
         var fields = Array(ast.ObjectField).init(self.alloc);
         while (self.curr_token != .rsquirly) {
             const field = try self.parseObjectField();
-            fields.append(field) catch @panic("unable to append pattern");
+            try fields.append(field);
             if (self.curr_token == .comma) self.next();
         }
 
@@ -699,7 +700,7 @@ pub const Parser = struct {
         var expressions = Array(ast.Expression).init(self.alloc);
         while (self.curr_token != .rbracket) {
             const e = try self.parseExpression();
-            expressions.append(e) catch @panic("unable to append pattern");
+            try expressions.append(e);
             if (self.curr_token == .comma) self.next(); // TODO: nice error if comma is missing between items
         }
 
@@ -720,7 +721,7 @@ pub const Parser = struct {
     // https://www.youtube.com/watch?v=fIPO4G42wYE&t=6165s
     fn parseInfixBinaryExpression(self: *Self, left: ast.Expression) ErrorKind!*ast.InfixBinaryExpression {
         const op = try self.parseInfixOperator();
-        const expr = self.alloc.create(ast.InfixBinaryExpression) catch @panic("unable to allocate");
+        const expr = try self.alloc.create(ast.InfixBinaryExpression);
         expr.* = ast.InfixBinaryExpression{
             .left = left,
             .operator = op,
@@ -731,7 +732,7 @@ pub const Parser = struct {
     }
 
     fn parsePrefixBinaryExpression(self: *Self, left: ast.PrefixOperator) ErrorKind!*ast.PrefixBinaryExpression {
-        const expr = self.alloc.create(ast.PrefixBinaryExpression) catch @panic("unable to allocate");
+        const expr = try self.alloc.create(ast.PrefixBinaryExpression);
         self.next();
         expr.* = ast.PrefixBinaryExpression{
             .left = left,
