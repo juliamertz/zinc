@@ -143,7 +143,10 @@ pub const Parser = struct {
 
     fn parseNode(self: *Self) ErrorKind!ast.Node {
         return switch (self.curr_token) {
-            .keyword => .{ .statement = try self.parseStatement() },
+            .keyword => |kw| switch (kw) {
+                .match => .{ .expression = try self.parseExpression() },
+                else => .{ .statement = try self.parseStatement() },
+            },
             .ident => blk: {
                 const ident = try self.parseIdentifier();
                 try self.consumeToken(.equal);
@@ -198,26 +201,6 @@ pub const Parser = struct {
 
         return ident;
     }
-
-    // fn parseIntegerLiteral(self: *Self) ErrorKind!i64 {
-    //     const int = switch (self.curr_token) {
-    //         .integer => |val| std.fmt.parseInt(i64, val, 10) catch {
-    //             return self.errorMessage(
-    //                 error.InvalidInteger,
-    //                 "expected next token to be a valid integer, got {any}",
-    //                 .{self.curr_token},
-    //             );
-    //         },
-    //         else => self.errorMessage(
-    //             error.IntegerExpected,
-    //             "expected next token to be an integer, got {any}",
-    //             .{self.curr_token},
-    //         ),
-    //     };
-    //
-    //     self.next();
-    //     return int;
-    // }
 
     // Check if current token is a prefix operator
     fn scanPrefixOperator(self: *Self) ?ast.PrefixOperator {
