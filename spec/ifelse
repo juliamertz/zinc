@@ -1,9 +1,8 @@
-let num = 100;
+let num = 60;
+let default = 25;
 
-let a = if num > 50 {
-  20;
-  40
+let a = if num > 50 { 
+  default 
 } else {
-  10;
-  20
+   num
 };

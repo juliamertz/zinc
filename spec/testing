@@ -7,13 +7,16 @@
 -- let message = greet("julia");
 
 let temp = 0;
-let mut items = [
-    temp,
-    10,
-    20,
-    30,
-    "other"
-];
 
-let item = items[2];
-let other = ["some", "none"][0];
+"hey young world";
+  
+-- let mut items = [
+--     temp,
+--     10,
+--     20,
+--     30,
+--     "other"
+-- ];
+-- 
+-- let item = items[2];
+-- let other = ["some", "none"][0];

@@ -149,6 +149,13 @@ pub const Parser = struct {
             },
             .ident => blk: {
                 const ident = try self.parseIdentifier();
+
+                self.expectToken(.equal) catch {
+                    return .{
+                        .expression = .{ .identifier = ident },
+                    };
+                };
+
                 try self.consumeToken(.equal);
                 const expr = try self.parseExpression();
                 try self.consumeToken(.semicolon);

@@ -5,17 +5,17 @@
 --   _ -> "old",
 -- };
 
-let name = match "bob" {
-  "fred" -> "notbob",
-  "bob" | "Bob" -> "isbob",
-  _ -> "definitelynotbob", 
-};
+-- let name = match "bob" {
+--   "fred" -> "notbob",
+--   "bob" | "Bob" -> "isbob",
+--   _ -> "definitelynotbob", 
+-- };
 
-let item = match ["hello", "world"] {
-  ["hello", "world"] -> "Hello world!",
-  ["hello", name] -> "Hello there "  + name,
-  _ -> "No hello D:",
-};
+-- let item = match ["hello", "world"] {
+--   ["hello", "world"] -> "Hello world!",
+--   ["hello", name] -> "Hello there "  + name,
+--   _ -> "No hello D:",
+-- };
 
 match "a" {
   _ -> "b",

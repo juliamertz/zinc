@@ -15,7 +15,7 @@ const Value = union(enum) {
     integer: i64,
     boolean: bool,
     function: FunctionValue,
-    null, // TODO: remove this sometime when there is a a type system (soontm)
+    null,
 };
 
 const ErrorKind = error{
