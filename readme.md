@@ -1,4 +1,9 @@
-# My unnamed and unfinished language
+# My unfinished language
 
-This atrocity exists thanks to https://interpreterbook.com/
+## Todo
 
+- [ ] Figure out when to require semicolons if ever?
+- [ ] Expand on pattern parsing
+- [ ] Implement match expression evaluation
+- [ ] expand binary expression evaluation
+- [x] Equality operator parsing / eval

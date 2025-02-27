@@ -211,8 +211,6 @@ pub const Interpreter = struct {
                         const identifier = func_ptr.arguments[index].identifier;
                         const value = try self.evaluateExpression(argument, &func_scope);
                         func_scope.variables.put(identifier, value) catch @panic("unable to append function to scope");
-
-                        std.debug.print("putting variable in function scope: {s}\n", .{identifier});
                     }
 
                     const res = self.evaluateFunction(func_ptr.body, func_ptr.arguments, &func_scope);
@@ -228,13 +226,30 @@ pub const Interpreter = struct {
                     .boolean => |do| {
                         if (do) {
                             var if_scope = Scope.init(self.alloc, scope);
-                            // TODO: return last value without return keyword
                             return try self.evaluateBlock(stmnt.consequence, &if_scope);
+                        }
+                        // TODO: clean this up
+                        else if (stmnt.alternative) |alternative| {
+                            var else_scope = Scope.init(self.alloc, scope);
+                            return try self.evaluateBlock(alternative, &else_scope);
                         }
                     },
                     else => @panic("boolean expected"),
                 }
                 return Value.null;
+            },
+
+            .match => |stmnt| {
+                const value: Value = try self.evaluateExpression(stmnt.value, scope);
+                // for (stmnt.arms) |arm| {
+                //
+                // // switch (value) {
+                // //    .string => |val| {}
+                // // }
+                //
+                // }
+                //
+                std.debug.panic("todo implement match, value: {}", .{value});
             },
 
             else => std.debug.panic("Unhandled expression: {any}", .{expr}),
@@ -252,6 +267,9 @@ pub const Interpreter = struct {
                 switch (statement) {
                     .@"return" => |val| {
                         std.debug.print("encountered return statement: {any}\n", .{val});
+                        return try self.evaluateExpression(val.value, scope);
+                    },
+                    .implicit_return => |val| {
                         return try self.evaluateExpression(val.value, scope);
                     },
                     else => {
@@ -288,11 +306,11 @@ pub const Interpreter = struct {
             .subtract => .{ .integer = left - right },
             .multiply => .{ .integer = left * right },
             .divide => .{ .integer = @divTrunc(left, right) },
+            .equal => .{ .boolean = left == right },
             .greater_than => .{ .boolean = left > right },
             .greater_than_or_eq => .{ .boolean = left >= right },
             .less_than => .{ .boolean = left > right },
             .less_than_or_eq => .{ .boolean = left <= right },
-
             else => ErrorKind.IllegalOperator,
         };
     }
@@ -301,7 +319,7 @@ pub const Interpreter = struct {
         return switch (op) {
             .and_operator => left and right,
             .or_operator => left or right,
-
+            .equal => left == right,
             else => ErrorKind.IllegalOperator,
         };
     }
@@ -313,6 +331,8 @@ pub const Interpreter = struct {
                 const result = std.mem.join(self.alloc, "", &buff) catch @panic("can't join strings");
                 return result;
             },
+            // TODO: return Value from this and eval bool bin expr
+            // .equal => left == right,
 
             else => ErrorKind.IllegalOperator,
         };

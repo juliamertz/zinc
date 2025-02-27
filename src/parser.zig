@@ -144,7 +144,7 @@ pub const Parser = struct {
     fn parseNode(self: *Self) ErrorKind!ast.Node {
         return switch (self.curr_token) {
             .keyword => |kw| switch (kw) {
-                .match => .{ .expression = try self.parseExpression() },
+                .match, .@"if" => .{ .expression = try self.parseExpression() },
                 else => .{ .statement = try self.parseStatement() },
             },
             .ident => blk: {
@@ -201,7 +201,7 @@ pub const Parser = struct {
 
             else => return self.errorMessage(
                 error.IdentifierExpected,
-                "expected next to be token to be an identifier, got {any}",
+                "expected next token to be an identifier, got {any}",
                 .{self.curr_token},
             ),
         };
@@ -221,7 +221,10 @@ pub const Parser = struct {
     // Check if current token is an infix operator
     fn scanInfixOperator(self: *Self) ErrorKind!ast.InfixOperator {
         return switch (self.curr_token) {
-            .equal => .equal,
+            .equal => switch (self.peek_token) {
+                .equal => .equal,
+                else => .assign,
+            },
             .plus => .add,
             .minus => .subtract,
             .asterisk => .multiply,
@@ -258,7 +261,7 @@ pub const Parser = struct {
     fn parseInfixOperator(self: *Self) ErrorKind!ast.InfixOperator {
         const operator = try self.scanInfixOperator();
         switch (operator) {
-            .less_than_or_eq, .greater_than_or_eq, .range => self.next(),
+            .less_than_or_eq, .greater_than_or_eq, .range, .equal => self.next(),
             else => {},
         }
         self.next();
@@ -828,7 +831,7 @@ test "Parse - let statements" {
 test "Parse - return" {
     try expectAst("return 2500 - 10;",
         \\.statement:
-        \\  .return_:
+        \\  .return:
         \\    .value:
         \\      .infix_operator:
         \\        .left:
@@ -840,7 +843,7 @@ test "Parse - return" {
 
     try expectAst("return 2500;",
         \\.statement:
-        \\  .return_:
+        \\  .return:
         \\    .value:
         \\      .integer_literal: 2500
     );
@@ -887,9 +890,9 @@ test "Parse - conditionals" {
     try expectAst(
         \\if 100 > 50 {
         \\  let a = "bigger";
-        \\};
+        \\}
     ,
-        \\.statement:
+        \\.expression:
         \\  .if_else:
         \\    .condition:
         \\      .infix_operator:
