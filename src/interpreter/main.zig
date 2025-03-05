@@ -264,7 +264,7 @@ pub const Interpreter = struct {
                             var if_scope = Scope.init(self.alloc, scope);
                             return try self.evaluateBlock(stmnt.consequence, &if_scope);
                         }
-                        // TODO: clean this up
+                        // TODO: add inline else if
                         else if (stmnt.alternative) |alternative| {
                             var else_scope = Scope.init(self.alloc, scope);
                             return try self.evaluateBlock(alternative, &else_scope);

@@ -6,10 +6,7 @@
 
   outputs =
     { zig2nix, zls, ... }:
-    let
-      flake-utils = zig2nix.inputs.flake-utils;
-    in
-    (flake-utils.lib.eachDefaultSystem (
+    (zig2nix.inputs.flake-utils.lib.eachDefaultSystem (
       system:
       let
         zig-master = zig2nix.outputs.packages.${system}.zig.master.bin;
@@ -57,16 +54,16 @@
             '')
 
             # compiler experimentation
-            musl
-            binutils
-            gcc
-            qbe
-            (writeShellScriptBin ";run-ssa" ''
-              name="''${1%.*}"
-              qbe $1 | as -o temp.o && \
-              musl-gcc -o $name -static temp.o && rm temp.o && \
-              ./$name && rm $name
-            '')
+            (writeShellApplication {
+              name = "run-ssa";
+              runtimeInputs = [ musl.dev binutils gcc qbe ];
+              text = ''
+                name="''${1%.*}"
+                qbe "$1" | as -o temp.o && \
+                musl-gcc -o "$name" -static temp.o && rm temp.o && \
+                exec "./$name" && rm "$name"
+              '';
+            })
           ];
         };
       }

@@ -148,6 +148,7 @@ pub const Parser = struct {
                 else => .{ .statement = try self.parseStatement() },
             },
             .ident => blk: {
+                // TODO: make sure this doesn't interfere with equality expressions and it only matches assignment statements
                 if (self.peek_token == .equal) {
                     const ident = try self.parseIdentifier();
                     try self.consumeToken(.equal);
