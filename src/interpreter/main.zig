@@ -1,30 +1,42 @@
 const std = @import("std");
-const ast = @import("ast.zig");
 const pretty = @import("pretty");
+const ast = @import("../ast.zig");
+const builtins = @import("builtins.zig");
 
 const Array = std.ArrayList;
 const StringHashMap = std.StringHashMap;
 
-const FunctionValue = struct {
+const Function = struct {
     arguments: []ast.FunctionArgument,
     body: ast.Block,
 };
 
-const Value = union(enum) {
+const BuiltinFunction = struct {
+    ptr: *const fn (args: []const Value) ErrorKind!Value,
+};
+
+pub const Value = union(enum) {
     string: []const u8,
     integer: i64,
     boolean: bool,
-    function: FunctionValue,
+    function: Function,
+    builtin: BuiltinFunction,
     null,
 };
 
-const ErrorKind = error{
+const ValueBinding = struct {
+    value: Value,
+    mutable: bool,
+};
+
+pub const ErrorKind = error{
     MismatchedTypes,
     NoSuchVariable,
     NoSuchFunction,
     IllegalOperator,
     IllegalReturn,
     NotAFunction,
+    OutOfMemory,
 };
 
 const EvalError = struct {
@@ -34,14 +46,14 @@ const EvalError = struct {
 
 pub const Scope = struct {
     parent: ?*Scope,
-    variables: StringHashMap(Value),
+    variables: StringHashMap(ValueBinding),
 
     const Self = @This();
 
     fn init(alloc: std.mem.Allocator, parent: ?*Self) Self {
         return Scope{
             .parent = parent,
-            .variables = StringHashMap(Value).init(alloc),
+            .variables = StringHashMap(ValueBinding).init(alloc),
         };
     }
 
@@ -56,8 +68,8 @@ pub const Scope = struct {
     }
 
     fn retrieve(self: *Self, key: []const u8) ?Value {
-        if (self.variables.get(key)) |val| {
-            return val;
+        if (self.variables.get(key)) |binding| {
+            return binding.value;
         } else if (self.parent) |parent| {
             return parent.retrieve(key);
         }
@@ -67,13 +79,20 @@ pub const Scope = struct {
 
     /// binds key to value in local scope
     /// will overwrite any existing variable
-    fn bind(self: *Self, key: []const u8, value: Value) void {
+    fn bind(self: *Self, key: []const u8, value: ValueBinding) void {
         self.variables.put(key, value) catch @panic("unable to append");
     }
 
     /// attempts to assign to existing key in local or any parent scope
-    fn assignGlobal(_: *Self, key: []const u8, value: Value) void {
-        std.debug.panic("TODO: assign global in scope, {s}: {any}", .{ key, value });
+    /// panics if binding is immutable
+    fn assignGlobal(self: *Self, key: []const u8, value: Value) void {
+        if (self.variables.getPtr(key)) |binding| {
+            if (binding.mutable) {
+                binding.value = value;
+            } else @panic("attempted to re-assign to immutable value");
+        } else if (self.parent) |parent| {
+            parent.assignGlobal(key, value);
+        }
     }
 };
 
@@ -141,32 +160,32 @@ pub const Interpreter = struct {
     fn evaluateStatement(self: *Self, statement: ast.Statement, scope: *Scope) ErrorKind!?Value {
         switch (statement) {
             .function => |func| {
-                scope.variables.put(
-                    func.identifier,
-                    .{
-                        .function = FunctionValue{
+                scope.bind(func.identifier, .{
+                    .mutable = false,
+                    .value = .{
+                        .function = Function{
                             .arguments = func.arguments,
                             .body = func.body,
                         },
                     },
-                ) catch @panic("unable to append");
+                });
             },
             .let => |let| {
-                scope.variables.put(
-                    let.identifier,
-                    try self.evaluateExpression(let.value, scope),
-                ) catch @panic("unable to append");
+                scope.bind(let.identifier, .{
+                    .mutable = let.mutable,
+                    .value = try self.evaluateExpression(let.value, scope),
+                });
             },
             .assign => |stmnt| {
                 if (!scope.exists(stmnt.identifier)) {
-                    std.debug.print("tried to assign to non existing variable: {s}\n", .{stmnt.identifier});
+                    std.debug.print("tried to assign to non existing variable for assign: {s}\n", .{stmnt.identifier});
                     return ErrorKind.NoSuchVariable;
-                }
+                } else {}
 
-                scope.variables.put(
+                scope.assignGlobal(
                     stmnt.identifier,
                     try self.evaluateExpression(stmnt.value, scope),
-                ) catch @panic("unable to append");
+                );
             },
 
             .implicit_return => |stmnt| {
@@ -188,20 +207,36 @@ pub const Interpreter = struct {
             .prefix_operator => |val| try self.evaluatePrefixBinaryExpression(val.*, scope),
             .grouped_expression => |group| try self.evaluateExpression(group.expression, scope),
             .identifier => |ident| blk: {
+                if (builtins.fromStr(ident)) |builtin| {
+                    return .{ .builtin = .{ .ptr = builtin } };
+                }
+
                 if (scope.retrieve(ident)) |value| {
                     break :blk value;
                 } else {
-                    std.debug.print("tried to get to non existing variable: {s}\n", .{ident});
+                    std.debug.print("tried to get to non existing variable for identifier: {s}\n", .{ident});
                     break :blk ErrorKind.NoSuchVariable;
                 }
             },
             .boolean => |val| .{ .boolean = val },
             .string_literal => |val| .{ .string = val },
-            .function_literal => |f| .{ .function = .{ .body = f.body, .arguments = f.arguments } },
+            .function_literal => |f| .{
+                .function = .{ .body = f.body, .arguments = f.arguments },
+            },
 
             .function_call => |func| {
-                if (scope.variables.get(func.identifier)) |ptr| {
-                    const func_ptr = switch (ptr) {
+                if (builtins.fromStr(func.identifier)) |builtin| {
+                    var values = Array(Value).init(self.alloc);
+                    for (func.arguments) |exp| {
+                        const value = try self.evaluateExpression(exp, scope);
+                        try values.append(value);
+                    }
+
+                    return builtin(values.items);
+                }
+
+                if (scope.retrieve(func.identifier)) |val| {
+                    const func_ptr = switch (val) {
                         .function => |v| v,
                         else => return ErrorKind.NotAFunction,
                     };
@@ -210,7 +245,8 @@ pub const Interpreter = struct {
                     for (func.arguments, 0..) |argument, index| {
                         const identifier = func_ptr.arguments[index].identifier;
                         const value = try self.evaluateExpression(argument, &func_scope);
-                        func_scope.variables.put(identifier, value) catch @panic("unable to append function to scope");
+                        // function bindings are always immutable
+                        func_scope.bind(identifier, .{ .mutable = false, .value = value });
                     }
 
                     const res = self.evaluateFunction(func_ptr.body, func_ptr.arguments, &func_scope);
@@ -242,13 +278,10 @@ pub const Interpreter = struct {
             .match => |stmnt| {
                 const value: Value = try self.evaluateExpression(stmnt.value, scope);
                 // for (stmnt.arms) |arm| {
-                //
                 // // switch (value) {
                 // //    .string => |val| {}
                 // // }
-                //
                 // }
-                //
                 std.debug.panic("todo implement match, value: {}", .{value});
             },
 
@@ -266,7 +299,6 @@ pub const Interpreter = struct {
             .statement => |statement| {
                 switch (statement) {
                     .@"return" => |val| {
-                        std.debug.print("encountered return statement: {any}\n", .{val});
                         return try self.evaluateExpression(val.value, scope);
                     },
                     .implicit_return => |val| {
@@ -292,10 +324,10 @@ pub const Interpreter = struct {
 
         var variables = self.root.variables.iterator();
         while (variables.next()) |variable| {
-            const value: Value = variable.value_ptr.*;
-            switch (value) {
+            const binding: ValueBinding = variable.value_ptr.*;
+            switch (binding.value) {
                 .string => |str| try stdout.print("identifier: {s}: type: string, value: {s}\n", .{ variable.key_ptr.*, str }),
-                else => try stdout.print("{s}: {any}\n", .{ variable.key_ptr.*, value }),
+                else => try stdout.print("{s}: {any}\n", .{ variable.key_ptr.*, binding }),
             }
         }
     }

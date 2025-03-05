@@ -3,7 +3,7 @@ const utils = @import("utils.zig");
 
 const lex = @import("lexer.zig");
 const ast = @import("ast.zig");
-const interp = @import("interpreter.zig");
+const interp = @import("interpreter/main.zig");
 
 const Parser = @import("parser.zig").Parser;
 

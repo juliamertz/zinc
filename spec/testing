@@ -1,22 +1,14 @@
--- greet the user
--- func greet(name) {
---   let msg = "hello there " + name;
---   return msg;
+-- let mut a = 20 == 20;
+-- func twenty() {
+--   20
+-- };
+
+twenty() + twenty()
+
+-- let a = if true {
+--  -- twenty() + twenty()
+-- } else {
+--   40
 -- };
 -- 
--- let message = greet("julia");
-
-let temp = 0;
-
-"hey young world";
-  
--- let mut items = [
---     temp,
---     10,
---     20,
---     30,
---     "other"
--- ];
--- 
--- let item = items[2];
--- let other = ["some", "none"][0];
+-- dbg(a)

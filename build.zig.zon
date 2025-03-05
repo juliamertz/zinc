@@ -1,7 +1,10 @@
 .{
-    .name = "zinc",
+    .name = .zinc,
     .version = "0.0.1",
-    .minimum_zig_version = "0.14.0",
+
+    .fingerprint = 0x4d051980297d4106,
+    .minimum_zig_version = "0.14.0-dev.3460+6d29ef0ba",
+
     .dependencies = .{
         .pretty = .{
             .url = "https://github.com/timfayz/pretty/archive/d17634f6be0e0461e65accdb4cdabf4e17ccf0d1.tar.gz",

@@ -1,10 +1,11 @@
 {
   inputs = {
     zig2nix.url = "github:Cloudef/zig2nix";
+    zls.url = "github:zigtools/zls";
   };
 
   outputs =
-    { zig2nix, ... }:
+    { zig2nix, zls, ... }:
     let
       flake-utils = zig2nix.inputs.flake-utils;
     in
@@ -42,6 +43,8 @@
         # nix develop
         devShells.default = env.mkShell {
           nativeBuildInputs = with env.pkgs; [
+            zls.packages.${system}.default
+
             (writeShellScriptBin "run" ''
               zig build run --prominent-compile-errors -- "$@"
             '')
@@ -58,7 +61,7 @@
             binutils
             gcc
             qbe
-            (writeShellScriptBin "run-ssa" ''
+            (writeShellScriptBin ";run-ssa" ''
               name="''${1%.*}"
               qbe $1 | as -o temp.o && \
               musl-gcc -o $name -static temp.o && rm temp.o && \

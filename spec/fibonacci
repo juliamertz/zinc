@@ -1,7 +1,15 @@
-let fibonacci = func(n) {
-  if n == 0 { 0 }
-  if n == 1 { 1 }
-  return fibonacci(n-1) + fibonacci(n-2);
-};
+ let fibonacci = func(n) {
+   return if n == 0 {
+     0
+   } else {
+     if n == 1 {
+       1
+     } else {
+        -- FIX: cannot do inline return for binary expressions
+        let next = fibonacci(n-1) + fibonacci(n-2);
+        next
+     }
+   };
+ };
 
-let test = fibonacci(4);
+dbg(fibonacci(4))

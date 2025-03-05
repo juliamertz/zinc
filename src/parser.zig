@@ -19,7 +19,7 @@ pub const ErrorKind = error{
 
     InvalidInteger,
     InvalidOperator,
-    InvalidToken, // Maybe this is a bit too general
+    InvalidToken,
 
     UnexpectedEof,
     OutOfMemory,
@@ -148,26 +148,23 @@ pub const Parser = struct {
                 else => .{ .statement = try self.parseStatement() },
             },
             .ident => blk: {
-                const ident = try self.parseIdentifier();
+                if (self.peek_token == .equal) {
+                    const ident = try self.parseIdentifier();
+                    try self.consumeToken(.equal);
+                    const expr = try self.parseExpression();
+                    try self.consumeToken(.semicolon);
 
-                self.expectToken(.equal) catch {
-                    return .{
-                        .expression = .{ .identifier = ident },
-                    };
-                };
-
-                try self.consumeToken(.equal);
-                const expr = try self.parseExpression();
-                try self.consumeToken(.semicolon);
-
-                break :blk .{
-                    .statement = .{
-                        .assign = .{
-                            .identifier = ident,
-                            .value = expr,
+                    break :blk .{
+                        .statement = .{
+                            .assign = .{
+                                .identifier = ident,
+                                .value = expr,
+                            },
                         },
-                    },
-                };
+                    };
+                } else {
+                    break :blk .{ .expression = try self.parseExpression() };
+                }
             },
             else => blk: {
                 const expr = try self.parseExpression();
@@ -425,14 +422,14 @@ pub const Parser = struct {
     }
 
     // TODO: this is different from range patterns as patterns can only use literal numbers and no identifiers etc.
-    // fn parseRangeExpression(self: *Self, left: ast.Expression) ParseErrorKind!ast.RangeExpression {
-    //     try self.consumeToken(.dot);
-    //     try self.consumeToken(.dot);
-    //     return ast.RangeExpression{
-    //         .left = left,
-    //         .right = try self.parseExpression(),
-    //     };
-    // }
+    fn parseRangeExpression(self: *Self, left: ast.Expression) ErrorKind!ast.RangeExpression {
+        try self.consumeToken(.dot);
+        try self.consumeToken(.dot);
+        return ast.RangeExpression{
+            .left = left,
+            .right = try self.parseExpression(),
+        };
+    }
 
     fn parseMatchPatterns(self: *Self) ErrorKind![]ast.Pattern {
         var patterns = Array(ast.Pattern).init(self.alloc);
@@ -451,12 +448,15 @@ pub const Parser = struct {
 
     fn parseFunctionCallExpression(self: *Self, ident: []const u8) ErrorKind!ast.FunctionCall {
         var arguments = Array(ast.Expression).init(self.alloc);
-        self.next();
         try self.consumeToken(.lparen);
 
         while (!eql(self.curr_token, .rparen)) {
             const arg = try self.parseExpression();
             try arguments.append(arg);
+
+            if (self.curr_token == .comma) {
+                self.next();
+            } else break;
         }
 
         try self.consumeToken(.rparen);
@@ -578,6 +578,7 @@ pub const Parser = struct {
             .ident => |ident| blk: {
                 if (eql(self.peek_token, .lparen)) {
                     const expr = try self.alloc.create(ast.FunctionCall);
+                    self.next();
                     expr.* = try self.parseFunctionCallExpression(ident);
                     break :blk .{ .function_call = expr };
                 }
@@ -600,17 +601,23 @@ pub const Parser = struct {
             },
             .lbracket => .{ .list = try self.parseListExpression() },
             .eof => unreachable,
-            else => return self.errorMessage(ErrorKind.ExpressionExpected, "", .{}),
+            else => return self.errorMessage(
+                ErrorKind.ExpressionExpected,
+                "Expected an expression found: {any}",
+                .{self.curr_token},
+            ),
         };
 
         if (self.curr_token == .lbracket) {
             const index_expr = try self.alloc.create(ast.IndexExpression);
             index_expr.* = try self.parseIndexExpression(expr);
-
             return .{ .index = index_expr };
         }
 
-        if (self.curr_token == .semicolon or self.curr_token == .lsquirly) return expr;
+        switch (self.curr_token) {
+            .semicolon, .lsquirly, .rparen => return expr,
+            else => {},
+        }
 
         _ = self.scanInfixOperator() catch return expr;
         return .{
@@ -863,9 +870,6 @@ test "Parse - operator expressions" {
         \\          .integer_literal: 10
         \\    .mutable: false
     );
-}
-
-test "Parse - nested operator expressions" {
     try expectAst("let name = 25 * 10 - 50;",
         \\.statement:
         \\  .let:
@@ -883,6 +887,19 @@ test "Parse - nested operator expressions" {
         \\            .right:
         \\              .integer_literal: 50
         \\    .mutable: false
+    );
+    try expectAst("some() + value()",
+        \\.expression:
+        \\  .infix_operator:
+        \\    .left:
+        \\      .function_call:
+        \\        .identifier: "some"
+        \\        .arguments: (empty)
+        \\    .operator: .add
+        \\    .right:
+        \\      .function_call:
+        \\        .identifier: "value"
+        \\        .arguments: (empty)
     );
 }
 
@@ -947,6 +964,21 @@ test "Parse - function call" {
         \\        .arguments:
         \\          .string_literal: "bob"
         \\    .mutable: false
+    );
+    try expectAst("greet(\"bob\")",
+        \\.expression:
+        \\  .function_call:
+        \\    .identifier: "greet"
+        \\    .arguments:
+        \\      .string_literal: "bob"
+    );
+    try expectAst("concat(\"left\", \"right\")",
+        \\.expression:
+        \\  .function_call:
+        \\    .identifier: "concat"
+        \\    .arguments:
+        \\      .string_literal: "left"
+        \\      .string_literal: "right"
     );
 }
 

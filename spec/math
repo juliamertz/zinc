@@ -1,0 +1,4 @@
+let width = 280;
+let height = 120;
+let div = width / height;
+dbg(div)
