@@ -46,11 +46,20 @@
               zig build run --prominent-compile-errors -- "$@"
             '')
 
+            (writeShellScriptBin "run-out" ''
+              ./zig-out/bin/zinc "$@"
+            '')
+
             reflex
             (writeShellScriptBin "watch" ''
               run $@
               # zig build watch flag is currently broken
               reflex -d none --regex='^(?:.+\.zig|spec\/.*)$' run $@
+            '')
+            (writeShellScriptBin "watch-out" ''
+              run-out $@
+              # zig build watch flag is currently broken
+              reflex -d none --regex='spec/*' run-out $@
             '')
 
             # compiler experimentation

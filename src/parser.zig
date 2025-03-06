@@ -973,12 +973,13 @@ test "Parse - function call" {
         \\    .arguments:
         \\      .string_literal: "bob"
     );
-    try expectAst("concat(\"left\", \"right\")",
+    try expectAst("concat(\"left\", \"middle\", \"right\")",
         \\.expression:
         \\  .function_call:
         \\    .identifier: "concat"
         \\    .arguments:
         \\      .string_literal: "left"
+        \\      .string_literal: "middle"
         \\      .string_literal: "right"
     );
 }

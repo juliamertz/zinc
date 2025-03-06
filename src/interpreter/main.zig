@@ -1,33 +1,11 @@
 const std = @import("std");
 const pretty = @import("pretty");
 const ast = @import("../ast.zig");
+const utils = @import("../utils.zig");
 const builtins = @import("builtins.zig");
 
 const Array = std.ArrayList;
 const StringHashMap = std.StringHashMap;
-
-const Function = struct {
-    arguments: []ast.FunctionArgument,
-    body: ast.Block,
-};
-
-const BuiltinFunction = struct {
-    ptr: *const fn (args: []const Value) ErrorKind!Value,
-};
-
-pub const Value = union(enum) {
-    string: []const u8,
-    integer: i64,
-    boolean: bool,
-    function: Function,
-    builtin: BuiltinFunction,
-    null,
-};
-
-const ValueBinding = struct {
-    value: Value,
-    mutable: bool,
-};
 
 pub const ErrorKind = error{
     MismatchedTypes,
@@ -44,6 +22,28 @@ const EvalError = struct {
     message: []const u8,
 };
 
+pub const BuiltinPtr = *const fn (args: []const Value) ErrorKind!Value;
+
+pub const Value = union(enum) {
+    string: []const u8,
+    integer: i64,
+    boolean: bool,
+    function: Function,
+    builtin: BuiltinPtr,
+    null,
+};
+
+const Function = struct {
+    arguments: []ast.FunctionArgument,
+    body: ast.Block,
+};
+
+const ValueBinding = struct {
+    value: Value,
+    mutable: bool,
+};
+
+// PERF: would merging scopes be faster than recursive lookup?
 pub const Scope = struct {
     parent: ?*Scope,
     variables: StringHashMap(ValueBinding),
@@ -208,7 +208,7 @@ pub const Interpreter = struct {
             .grouped_expression => |group| try self.evaluateExpression(group.expression, scope),
             .identifier => |ident| blk: {
                 if (builtins.fromStr(ident)) |builtin| {
-                    return .{ .builtin = .{ .ptr = builtin } };
+                    return .{ .builtin = builtin };
                 }
 
                 if (scope.retrieve(ident)) |value| {
@@ -219,7 +219,7 @@ pub const Interpreter = struct {
                 }
             },
             .boolean => |val| .{ .boolean = val },
-            .string_literal => |val| .{ .string = val },
+            .string_literal => |val| .{ .string = try utils.preEscapeString(self.alloc, val) },
             .function_literal => |f| .{
                 .function = .{ .body = f.body, .arguments = f.arguments },
             },
@@ -341,7 +341,7 @@ pub const Interpreter = struct {
             .equal => .{ .boolean = left == right },
             .greater_than => .{ .boolean = left > right },
             .greater_than_or_eq => .{ .boolean = left >= right },
-            .less_than => .{ .boolean = left > right },
+            .less_than => .{ .boolean = left < right },
             .less_than_or_eq => .{ .boolean = left <= right },
             else => ErrorKind.IllegalOperator,
         };

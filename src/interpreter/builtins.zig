@@ -1,11 +1,11 @@
 const std = @import("std");
-
 const interpreter = @import("main.zig");
-const Value = interpreter.Value;
-const Error = interpreter.ErrorKind;
 
-pub fn fromStr(str: []const u8) ?*const fn (args: []const Value) Error!Value {
-    const function_map = std.StaticStringMap(*const fn (args: []const Value) Error!Value).initComptime(.{
+const Value = interpreter.Value;
+const BuiltinPtr = interpreter.BuiltinPtr;
+
+pub fn fromStr(str: []const u8) ?BuiltinPtr {
+    const function_map = std.StaticStringMap(BuiltinPtr).initComptime(.{
         .{ "dbg", dbg },
         .{ "print", print },
     });
@@ -39,8 +39,22 @@ fn dbg(args: []const Value) !Value {
     return .null;
 }
 
-// Another example function
 fn print(args: []const Value) !Value {
-    std.debug.print("Print function called: {any}\n", .{args});
+    const stdout = std.io.getStdOut().writer();
+    for (args) |arg| {
+        const content = switch (arg) {
+            .builtin => "<builtin function>",
+            .function => "<function>",
+            .null => "null",
+            .string => |val| val,
+            .integer => |val| std.fmt.allocPrint(std.heap.page_allocator, "{d}", .{val}) catch @panic("alloc failed in builtin function"),
+            .boolean => |val| switch (val) {
+                true => "true",
+                false => "false",
+            },
+        };
+        stdout.writeAll(content) catch @panic("unable to write in print");
+    }
+
     return .null;
 }

@@ -1,14 +1,12 @@
--- let mut a = 20 == 20;
--- func twenty() {
---   20
--- };
+func println(str) {
+  print(str + "\n")
+};
 
-twenty() + twenty()
+func loop(i) {
+  if i < 10 {
+    println("hey young world")
+    loop(i + 1)
+  }
+};
 
--- let a = if true {
---  -- twenty() + twenty()
--- } else {
---   40
--- };
--- 
--- dbg(a)
+loop(0)

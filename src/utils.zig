@@ -24,6 +24,39 @@ pub fn repeatString(allocator: std.mem.Allocator, s: []const u8, n: usize) ![]u8
     return std.mem.join(allocator, "", result);
 }
 
+/// return new string with interpolated escape sequences
+/// for example: .{ '\\', 'n' } returns .{ '\n' }
+pub fn preEscapeString(allocator: std.mem.Allocator, str: []const u8) ![]const u8 {
+    var buff = try allocator.alloc(u8, str.len);
+
+    var i: u8 = 0;
+    var j: u8 = 0;
+    while (i < str.len) {
+        if (str[i] == '\\') {
+            const escaped: ?u8 = switch (str[i + 1]) {
+                'n' => '\n',
+                'r' => '\r',
+                't' => '\t',
+                '\\' => '\\',
+                '"' => '"',
+                '\'' => '\'',
+                else => null,
+            };
+            if (escaped) |val| {
+                buff[j] = val;
+                i += 1; // skip escaped charachter
+            }
+        } else {
+            buff[j] = str[i];
+        }
+
+        j += 1;
+        i += 1;
+    }
+
+    return buff;
+}
+
 pub fn printAst(alloc: std.mem.Allocator, nodes: []ast.Node) !void {
     const stdout = std.io.getStdOut().writer();
     const printed = try pretty.dump(alloc, nodes, .{
