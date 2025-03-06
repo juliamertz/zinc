@@ -57,14 +57,30 @@ pub fn preEscapeString(allocator: std.mem.Allocator, str: []const u8) ![]const u
     return buff;
 }
 
-pub fn printAst(alloc: std.mem.Allocator, nodes: []ast.Node) !void {
+pub fn printAst(alloc: std.mem.Allocator, value: anytype) !void {
     const stdout = std.io.getStdOut().writer();
-    const printed = try pretty.dump(alloc, nodes, .{
+    const printed = try pretty.dump(alloc, value, .{
         .print_extra_empty_line = true,
         .max_depth = std.math.maxInt(u8),
         .ptr_skip_dup_unfold = false,
         .show_type_names = false,
     });
 
+    try stdout.writeAll(printed);
+}
+
+// fn errorMessage(self: *Self, kind: ErrorKind, comptime msg: []const u8, args: anytype) ErrorKind {
+
+pub fn debug(msg: []const u8, value: anytype) !void {
+    const stdout = std.io.getStdOut().writer();
+    const printed = try pretty.dump(std.heap.page_allocator, value, .{
+        .print_extra_empty_line = true,
+        .max_depth = std.math.maxInt(u8),
+        .ptr_skip_dup_unfold = false,
+        .show_type_names = false,
+    });
+
+    try stdout.writeAll(msg);
+    try stdout.writeAll(":\n");
     try stdout.writeAll(printed);
 }

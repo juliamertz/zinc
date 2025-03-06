@@ -2,11 +2,16 @@ func println(str) {
   print(str + "\n")
 };
 
+let MAX_ITER = 250;
+
 func loop(i) {
-  if i < 10 {
-    println("hey young world")
+  if i < MAX_ITER {
+    println("iteraton: " + intToStr(i))
     loop(i + 1)
   }
 };
+
+-- let asstr = intToStr(10);
+-- println(intToStr(10))
 
 loop(0)

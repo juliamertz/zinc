@@ -20,16 +20,27 @@ const print_trace = true;
 
 pub fn run(alloc: std.mem.Allocator, interpreter: *interp.Interpreter, content: []const u8) !void {
     var parser = Parser.init(content, alloc);
-    const nodes = parser.parseNodes() catch |err| {
+    // const nodes = parser.parseNodes() catch |err| {
+    //     parser.debug("Parsing errors", true);
+    //     if (print_trace) return err;
+    //     std.process.exit(1);
+    // };
+
+    const moduleAst = parser.parseModule() catch |err| {
         parser.debug("Parsing errors", true);
         if (print_trace) return err;
         std.process.exit(1);
     };
 
-    try utils.printAst(alloc, nodes);
+    // const env = std.process.getEnvMap(alloc) catch @panic("unable to get environment");
+    // if (env.get("ZINC_LOG")) |value| {
+    // if (std.mem.eql(u8, value, "debug")) {
+    try utils.printAst(alloc, moduleAst);
     std.debug.print("\n\n", .{});
+    // }
+    // }
 
-    try interpreter.evaluate(nodes);
+    _ = try interpreter.evaluateModule(moduleAst);
 }
 
 pub fn start() !void {

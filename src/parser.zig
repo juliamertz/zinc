@@ -122,6 +122,10 @@ pub const Parser = struct {
         self.next();
     }
 
+    pub fn parseModule(self: *Self) ErrorKind!ast.Module {
+        return .{ .nodes = try self.parseNodes() };
+    }
+
     /// Parse nodes and accumulate into an `ArrayList`
     /// This will attempt to parse until `eof` is reached.
     pub fn parseNodes(self: *Self) ErrorKind![]ast.Node {

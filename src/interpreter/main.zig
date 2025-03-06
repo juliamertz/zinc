@@ -33,6 +33,10 @@ pub const Value = union(enum) {
     null,
 };
 
+pub const Module = struct {
+    exports: *Scope,
+};
+
 const Function = struct {
     arguments: []ast.FunctionArgument,
     body: ast.Block,
@@ -126,6 +130,14 @@ pub const Interpreter = struct {
             _ = try self.evaluateNode(node, &self.root);
 
         try self.printDebug();
+    }
+
+    pub fn evaluateModule(self: *Self, module: ast.Module) !Module {
+        var scope = Scope.init(self.alloc, null);
+        for (module.nodes) |node|
+            _ = try self.evaluateNode(node, &scope);
+
+        return .{ .exports = &scope };
     }
 
     /// Evaluate block line by line and return last value

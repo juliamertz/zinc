@@ -8,34 +8,17 @@ pub fn fromStr(str: []const u8) ?BuiltinPtr {
     const function_map = std.StaticStringMap(BuiltinPtr).initComptime(.{
         .{ "dbg", dbg },
         .{ "print", print },
+        .{ "intToStr", intToStr },
     });
 
     return function_map.get(str);
 }
 
+// TODO:
 fn dbg(args: []const Value) !Value {
-    const alloc = std.heap.page_allocator;
-    var result = std.ArrayList(u8).init(alloc);
-
-    for (args, 0..) |value, i| {
-        const format = try switch (value) {
-            .string => |text| std.fmt.allocPrint(alloc, "{s}", .{text}),
-            .integer => |val| std.fmt.allocPrint(alloc, "{d}", .{val}),
-            else => std.fmt.allocPrint(alloc, "{any}", .{value}),
-        };
-
-        if (i != args.len - 1) {
-            try result.appendSlice(", ");
-        }
-
-        try result.appendSlice(format);
-    }
-
-    try result.append('\n');
-
+    _ = try print(args);
     const stdout = std.io.getStdOut().writer();
-    stdout.writeAll(result.items) catch unreachable;
-
+    _ = stdout.writeAll("\n") catch unreachable;
     return .null;
 }
 
@@ -47,7 +30,7 @@ fn print(args: []const Value) !Value {
             .function => "<function>",
             .null => "null",
             .string => |val| val,
-            .integer => |val| std.fmt.allocPrint(std.heap.page_allocator, "{d}", .{val}) catch @panic("alloc failed in builtin function"),
+            .integer => |val| std.fmt.allocPrint(std.heap.page_allocator, "{d}", .{val}) catch unreachable,
             .boolean => |val| switch (val) {
                 true => "true",
                 false => "false",
@@ -57,4 +40,13 @@ fn print(args: []const Value) !Value {
     }
 
     return .null;
+}
+
+// TODO: errors
+fn intToStr(args: []const Value) !Value {
+    if (args.len != 1) return .{ .string = "error: invalid arguments" };
+    return switch (args[0]) {
+        .integer => |val| .{ .string = std.fmt.allocPrint(std.heap.page_allocator, "{d}", .{val}) catch unreachable },
+        else => .{ .string = "error: not an integer" },
+    };
 }

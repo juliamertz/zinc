@@ -1,6 +1,10 @@
 const std = @import("std");
 const lex = @import("lexer.zig");
 
+pub const Module = struct {
+    nodes: []const Node,
+};
+
 pub const Block = struct {
     nodes: []const Node,
 };
