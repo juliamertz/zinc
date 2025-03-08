@@ -4,14 +4,28 @@ const interpreter = @import("main.zig");
 const Value = interpreter.Value;
 const BuiltinPtr = interpreter.BuiltinPtr;
 
-pub fn fromStr(str: []const u8) ?BuiltinPtr {
-    const function_map = std.StaticStringMap(BuiltinPtr).initComptime(.{
-        .{ "dbg", dbg },
-        .{ "print", print },
-        .{ "intToStr", intToStr },
-    });
+const function_map = std.StaticStringMap(BuiltinPtr).initComptime(.{
+    .{ "dbg", dbg },
+    .{ "print", print },
+    .{ "intToStr", intToStr },
+});
 
+pub fn fromStr(str: []const u8) ?BuiltinPtr {
     return function_map.get(str);
+}
+
+comptime fn module(alloc: std.mem.Allocator) interpreter.Module {
+    var scope = interpreter.Scope.init(alloc, null);
+    for (function_map.keys()) |key| {
+        const value = function_map.get(key).?;
+        const binding = interpreter.ValueBinding{
+            .mutable = false,
+            .value = .{ .builtin = value },
+        };
+        scope.bind(key, binding);
+    }
+
+    return .{ .root = &scope };
 }
 
 // TODO:
@@ -28,6 +42,7 @@ fn print(args: []const Value) !Value {
         const content = switch (arg) {
             .builtin => "<builtin function>",
             .function => "<function>",
+            .module => "<module>",
             .null => "null",
             .string => |val| val,
             .integer => |val| std.fmt.allocPrint(std.heap.page_allocator, "{d}", .{val}) catch unreachable,

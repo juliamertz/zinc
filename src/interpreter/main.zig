@@ -30,11 +30,12 @@ pub const Value = union(enum) {
     boolean: bool,
     function: Function,
     builtin: BuiltinPtr,
+    module: Module,
     null,
 };
 
 pub const Module = struct {
-    exports: *Scope,
+    root: *Scope,
 };
 
 const Function = struct {
@@ -42,7 +43,7 @@ const Function = struct {
     body: ast.Block,
 };
 
-const ValueBinding = struct {
+pub const ValueBinding = struct {
     value: Value,
     mutable: bool,
 };
@@ -54,7 +55,7 @@ pub const Scope = struct {
 
     const Self = @This();
 
-    fn init(alloc: std.mem.Allocator, parent: ?*Self) Self {
+    pub fn init(alloc: std.mem.Allocator, parent: ?*Self) Self {
         return Scope{
             .parent = parent,
             .variables = StringHashMap(ValueBinding).init(alloc),
@@ -83,7 +84,7 @@ pub const Scope = struct {
 
     /// binds key to value in local scope
     /// will overwrite any existing variable
-    fn bind(self: *Self, key: []const u8, value: ValueBinding) void {
+    pub fn bind(self: *Self, key: []const u8, value: ValueBinding) void {
         self.variables.put(key, value) catch @panic("unable to append");
     }
 
@@ -108,10 +109,17 @@ pub const Interpreter = struct {
     const Self = @This();
 
     pub fn init(alloc: std.mem.Allocator) Self {
+        var scope = Scope.init(alloc, null);
+
+        // TODO: find cleaner way to do this
+        // set up std lib module
+        const builtins_module = builtins.module(alloc);
+        scope.bind("builtins", .{ .value = .{ .module = builtins_module }, .mutable = false });
+
         return Self{
             .alloc = alloc,
             .errors = Array(EvalError).init(alloc),
-            .root = Scope.init(alloc, null),
+            .root = scope,
         };
     }
 
@@ -137,7 +145,9 @@ pub const Interpreter = struct {
         for (module.nodes) |node|
             _ = try self.evaluateNode(node, &scope);
 
-        return .{ .exports = &scope };
+        try self.printDebug();
+
+        return .{ .root = &scope };
     }
 
     /// Evaluate block line by line and return last value
@@ -198,10 +208,6 @@ pub const Interpreter = struct {
                     stmnt.identifier,
                     try self.evaluateExpression(stmnt.value, scope),
                 );
-            },
-
-            .implicit_return => |stmnt| {
-                return try self.evaluateExpression(stmnt.value, scope);
             },
 
             .@"return" => return ErrorKind.IllegalReturn,
@@ -307,22 +313,20 @@ pub const Interpreter = struct {
         _: []ast.FunctionArgument,
         scope: *Scope,
     ) !Value {
-        for (body.nodes) |node| switch (node) {
+        for (body.nodes, 0..) |node, i| switch (node) {
             .statement => |statement| {
                 switch (statement) {
                     .@"return" => |val| {
                         return try self.evaluateExpression(val.value, scope);
                     },
-                    .implicit_return => |val| {
-                        return try self.evaluateExpression(val.value, scope);
-                    },
-                    else => {
-                        _ = try self.evaluateStatement(statement, scope);
+                    else => if (try self.evaluateStatement(statement, scope)) |value| {
+                        if (i == body.nodes.len - 1) return value;
                     },
                 }
             },
             .expression => |expr| {
-                return try self.evaluateExpression(expr, scope);
+                const value = try self.evaluateExpression(expr, scope);
+                if (i == body.nodes.len - 1) return value;
             },
 
             else => std.debug.panic("Unhandled node in evaluate function: {any}", .{node}),

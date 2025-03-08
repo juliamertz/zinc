@@ -31,6 +31,50 @@ pub const ParseError = struct {
     location: std.zig.Loc,
 };
 
+const Ordering = enum {
+    less,
+    equal,
+    greater,
+};
+
+const Precende = enum {
+    lowest,
+    equals,
+    less_greater,
+    sum,
+    product,
+    prefix,
+    call,
+
+    const Self = @This();
+
+    fn fromInfixOperator(op: ast.InfixOperator) Self {
+        return switch (op) {
+            .equal, .assign => .equals,
+            .subtract, .add => .sum,
+            .divide, .multiply => .product,
+
+            .less_than_or_eq,
+            .less_than,
+            .greater_than,
+            .greater_than_or_eq,
+            => .less_greater,
+
+            else => .lowest,
+        };
+    }
+
+    fn eq(self: *Self, other: *Self) Ordering {
+        if (@intFromEnum(self) == @intFromEnum(other)) {
+            return .equal;
+        } else if (@intFromEnum(self) > @intFromEnum(other)) {
+            return .greater;
+        } else {
+            return .less;
+        }
+    }
+};
+
 pub const Parser = struct {
     lexer: lex.Lexer,
     alloc: std.mem.Allocator,
@@ -108,6 +152,13 @@ pub const Parser = struct {
         );
     }
 
+    /// Skip current token if it is of the expected kind
+    fn skipToken(self: *Self, expected: lex.Token) void {
+        if (eql(self.curr_token, expected)) {
+            self.next();
+        }
+    }
+
     /// Check if current token is equal to passed in token, then advance.
     /// throws an error if it does not match
     fn consumeToken(self: *Self, expected: lex.Token) !void {
@@ -157,7 +208,7 @@ pub const Parser = struct {
                     const ident = try self.parseIdentifier();
                     try self.consumeToken(.equal);
                     const expr = try self.parseExpression();
-                    try self.consumeToken(.semicolon);
+                    self.skipToken(.semicolon);
 
                     break :blk .{
                         .statement = .{
@@ -173,14 +224,7 @@ pub const Parser = struct {
             },
             else => blk: {
                 const expr = try self.parseExpression();
-                self.expectToken(.semicolon) catch {
-                    break :blk .{
-                        .statement = .{
-                            .implicit_return = .{ .value = expr },
-                        },
-                    };
-                };
-                try self.consumeToken(.semicolon);
+                self.skipToken(.semicolon);
                 break :blk .{ .expression = expr };
             },
         };
@@ -503,7 +547,7 @@ pub const Parser = struct {
         try self.consumeToken(lex.Token.rparen);
 
         const body = try self.parseBlock();
-        try self.consumeToken(.semicolon);
+        self.skipToken(.semicolon);
 
         return ast.FunctionStatement{
             .identifier = ident,
@@ -515,7 +559,7 @@ pub const Parser = struct {
     fn parseReturnStatement(self: *Self) ErrorKind!ast.ReturnStatement {
         self.next();
         const expr = try self.parseExpression();
-        try self.consumeToken(.semicolon);
+        self.skipToken(.semicolon);
 
         return ast.ReturnStatement{
             .value = expr,
@@ -537,12 +581,14 @@ pub const Parser = struct {
             .mutable = mutable,
         };
 
-        try self.consumeToken(.semicolon);
+        self.skipToken(.semicolon);
 
         return res;
     }
 
-    fn parseExpression(self: *Self) ErrorKind!ast.Expression {
+    fn parseExpression(
+        self: *Self,
+    ) ErrorKind!ast.Expression {
         if (self.scanPrefixOperator()) |operator| {
             return .{ .prefix_operator = try self.parsePrefixBinaryExpression(operator) };
         }
@@ -737,8 +783,8 @@ pub const Parser = struct {
     }
 
     fn parsePrefixBinaryExpression(self: *Self, left: ast.PrefixOperator) ErrorKind!*ast.PrefixBinaryExpression {
-        const expr = try self.alloc.create(ast.PrefixBinaryExpression);
         self.next();
+        const expr = try self.alloc.create(ast.PrefixBinaryExpression);
         expr.* = ast.PrefixBinaryExpression{
             .left = left,
             .right = try self.parseExpression(),

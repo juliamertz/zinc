@@ -11,7 +11,8 @@ func loop(i) {
   }
 };
 
--- let asstr = intToStr(10);
--- println(intToStr(10))
+let asstr = intToStr(10);
+println(intToStr(10))
+-- loop(0)
 
-loop(0)
+-- dbg(builtins)

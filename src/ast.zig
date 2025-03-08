@@ -19,7 +19,6 @@ pub const Statement = union(enum) {
     let: LetStatement,
     function: FunctionStatement,
     @"return": ReturnStatement,
-    implicit_return: ImplicitReturn,
     assign: AssingStatement,
     for_loop: ForStatement,
     while_loop: WhileStatement,
@@ -133,12 +132,6 @@ pub const WhileStatement = struct {
     body: Block,
 };
 
-/// Las value in a block without a leading semicolon
-/// implicitly returning the value for the current block
-pub const ImplicitReturn = struct {
-    value: Expression,
-};
-
 pub const ReturnStatement = struct {
     value: Expression,
 };
@@ -154,28 +147,25 @@ pub const PrefixBinaryExpression = struct {
     right: Expression,
 };
 
-pub const PrefixOperator = enum {
-    negate,
-    minus,
-};
-
 pub const IndexExpression = struct {
     value: Expression,
     index: Expression,
 };
 
+pub const PrefixOperator = enum {
+    negate,
+    minus,
+};
+
 pub const InfixOperator = enum {
     equal,
     assign,
-
     chain,
     range,
-
     add,
     subtract,
     multiply,
     divide,
-
     not_equal,
     less_than_or_eq,
     less_than,
