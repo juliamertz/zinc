@@ -26,8 +26,8 @@ pub const Statement = union(enum) {
 
 pub const Expression = union(enum) {
     grouped_expression: *GroupedExpression,
-    prefix_operator: *PrefixBinaryExpression,
-    infix_operator: *InfixBinaryExpression,
+    prefix_operator: *PrefixExpression,
+    infix_operator: *InfixExpression,
     index: *IndexExpression,
     identifier: []const u8,
     if_else: *IfExpression,
@@ -38,7 +38,7 @@ pub const Expression = union(enum) {
     string_literal: []const u8,
     integer_literal: i64,
     function_literal: *FunctionLiteral,
-    object_literal: *ObjectLiteral,
+    module_literal: *ModuleLiteral,
 };
 
 pub const Identifier = []const u8;
@@ -47,13 +47,13 @@ pub const GroupedExpression = struct {
     expression: Expression,
 };
 
-pub const ObjectField = struct {
+pub const ModuleField = struct {
     identifier: Identifier,
     value: Expression,
 };
 
-pub const ObjectLiteral = struct {
-    fields: []ObjectField,
+pub const ModuleLiteral = struct {
+    fields: []ModuleField,
 };
 
 /// range holding left/right expressions of unknown type
@@ -136,13 +136,13 @@ pub const ReturnStatement = struct {
     value: Expression,
 };
 
-pub const InfixBinaryExpression = struct {
+pub const InfixExpression = struct {
     left: Expression,
     operator: InfixOperator,
     right: Expression,
 };
 
-pub const PrefixBinaryExpression = struct {
+pub const PrefixExpression = struct {
     left: PrefixOperator,
     right: Expression,
 };

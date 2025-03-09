@@ -1,77 +1,52 @@
 {
   inputs = {
-    zig2nix.url = "github:Cloudef/zig2nix";
-    # TODO: remove zls once this pr is merged into nixpkgs
-    # https://github.com/NixOS/nixpkgs/pull/387924
-    zls.url = "github:zigtools/zls";
+    # move to unstable once zls is merged
+    nixpkgs.url = "github:NixOS/nixpkgs/master";
+    zon2nix = {
+      url = "github:nix-community/zon2nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
-    { zig2nix, zls, ... }:
-    (zig2nix.inputs.flake-utils.lib.eachDefaultSystem (
-      system:
-      let
-        zig-master = zig2nix.outputs.packages.${system}.zig.default.bin;
-        env = zig2nix.outputs.zig-env.${system} { zig = zig-master; };
-        system-triple = env.lib.zigTripleFromString system;
-      in
-      with env.lib;
-      rec {
-        packages.target = genAttrs allTargetTriples (
-          target:
-          env.packageForTarget target ({
-            src = cleanSource ./.;
-            zigPreferMusl = true;
-            zigDisableWrap = true;
-          })
+    { nixpkgs, zon2nix, ... }:
+    let
+      forAllSystems =
+        function:
+        nixpkgs.lib.genAttrs (nixpkgs.lib.systems.flakeExposed) (
+          system: function nixpkgs.legacyPackages.${system}
         );
+    in
+    {
+      packages = forAllSystems (
+        pkgs: with pkgs; {
+          default = stdenv.mkDerivation (finalAttrs: {
+            pname = "zinc";
+            version = "0.0.1";
+            src = ./.;
 
-        packages.default = packages.target.${system-triple}.override {
-          zigPreferMusl = false;
-          zigDisableWrap = false;
-        };
+            nativeBuildInputs = [ zig_0_14.hook ];
+            zigBuildFlags = [ "-Doptimize=ReleaseFast" ];
 
-        devShells.default = env.mkShell {
-          nativeBuildInputs = with env.pkgs; [
-            zls.packages.${system}.default
+            postPatch = ''
+              ln -s ${callPackage ./deps.nix { }} $ZIG_GLOBAL_CACHE_DIR/p
+            '';
 
-            (writeShellScriptBin "run" ''
-              zig build run --prominent-compile-errors -- "$@"
-            '')
-            (writeShellScriptBin "run-out" ''
-              ./zig-out/bin/zinc "$@"
-            '')
+            meta.mainProgram = finalAttrs.pname;
+          });
+        }
+      );
 
-            reflex
-            (writeShellScriptBin "watch" ''
-              run $@
-              # zig build watch flag is currently broken
-              reflex -d none --regex='^(?:.+\.zig|spec\/.*)$' run $@
-            '')
-            (writeShellScriptBin "watch-out" ''
-              run-out $@
-              # zig build watch flag is currently broken
-              reflex -d none --regex='spec/*' run-out $@
-            '')
-
-            # compiler experimentation
-            (writeShellApplication {
-              name = "run-ssa";
-              runtimeInputs = [
-                musl.dev
-                binutils
-                gcc
-                qbe
-              ];
-              text = ''
-                name="''${1%.*}"
-                qbe "$1" | as -o temp.o && \
-                musl-gcc -o "$name" -static temp.o && rm temp.o && \
-                exec "./$name" && rm "$name"
-              '';
-            })
-          ];
-        };
-      }
-    ));
+      devShells = forAllSystems (
+        pkgs: with pkgs; {
+          default = mkShell {
+            packages = [
+              zig
+              zls
+              zon2nix.packages.${system}.default
+            ];
+          };
+        }
+      );
+    };
 }

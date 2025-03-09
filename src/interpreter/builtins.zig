@@ -14,7 +14,7 @@ pub fn fromStr(str: []const u8) ?BuiltinPtr {
     return function_map.get(str);
 }
 
-comptime fn module(alloc: std.mem.Allocator) interpreter.Module {
+pub fn module(alloc: std.mem.Allocator) interpreter.Module {
     var scope = interpreter.Scope.init(alloc, null);
     for (function_map.keys()) |key| {
         const value = function_map.get(key).?;
@@ -25,7 +25,7 @@ comptime fn module(alloc: std.mem.Allocator) interpreter.Module {
         scope.bind(key, binding);
     }
 
-    return .{ .root = &scope };
+    return .{ .scope = &scope };
 }
 
 // TODO:

@@ -35,7 +35,7 @@ pub const Value = union(enum) {
 };
 
 pub const Module = struct {
-    root: *Scope,
+    scope: *Scope,
 };
 
 const Function = struct {
@@ -111,8 +111,6 @@ pub const Interpreter = struct {
     pub fn init(alloc: std.mem.Allocator) Self {
         var scope = Scope.init(alloc, null);
 
-        // TODO: find cleaner way to do this
-        // set up std lib module
         const builtins_module = builtins.module(alloc);
         scope.bind("builtins", .{ .value = .{ .module = builtins_module }, .mutable = false });
 
@@ -147,7 +145,7 @@ pub const Interpreter = struct {
 
         try self.printDebug();
 
-        return .{ .root = &scope };
+        return .{ .scope = &scope };
     }
 
     /// Evaluate block line by line and return last value
@@ -221,8 +219,8 @@ pub const Interpreter = struct {
     fn evaluateExpression(self: *Self, expr: ast.Expression, scope: *Scope) ErrorKind!Value {
         return switch (expr) {
             .integer_literal => |val| .{ .integer = val },
-            .infix_operator => |val| try self.evaluateInfixBinaryExpression(val.*, scope),
-            .prefix_operator => |val| try self.evaluatePrefixBinaryExpression(val.*, scope),
+            .infix_operator => |val| try self.evaluateInfixExpression(val.*, scope),
+            .prefix_operator => |val| try self.evaluatePrefixExpression(val.*, scope),
             .grouped_expression => |group| try self.evaluateExpression(group.expression, scope),
             .identifier => |ident| blk: {
                 if (builtins.fromStr(ident)) |builtin| {
@@ -348,7 +346,7 @@ pub const Interpreter = struct {
         }
     }
 
-    fn evaluateIntegerBinaryExpression(op: ast.InfixOperator, left: i64, right: i64) ErrorKind!Value {
+    fn evaluateIntegerExpression(op: ast.InfixOperator, left: i64, right: i64) ErrorKind!Value {
         return switch (op) {
             .add => .{ .integer = left + right },
             .subtract => .{ .integer = left - right },
@@ -363,7 +361,7 @@ pub const Interpreter = struct {
         };
     }
 
-    fn evaluateBooleanBinaryExpression(op: ast.InfixOperator, left: bool, right: bool) ErrorKind!bool {
+    fn evaluateBooleanExpression(op: ast.InfixOperator, left: bool, right: bool) ErrorKind!bool {
         return switch (op) {
             .and_operator => left and right,
             .or_operator => left or right,
@@ -372,7 +370,7 @@ pub const Interpreter = struct {
         };
     }
 
-    fn evaluateStringBinaryExpression(self: *Self, op: ast.InfixOperator, left: []const u8, right: []const u8) ErrorKind![]const u8 {
+    fn evaluateStringExpression(self: *Self, op: ast.InfixOperator, left: []const u8, right: []const u8) ErrorKind![]const u8 {
         return switch (op) {
             .add => {
                 const buff = [2][]const u8{ left, right };
@@ -386,25 +384,25 @@ pub const Interpreter = struct {
         };
     }
 
-    fn evaluateInfixBinaryExpression(self: *Self, expr: ast.InfixBinaryExpression, scope: *Scope) ErrorKind!Value {
+    fn evaluateInfixExpression(self: *Self, expr: ast.InfixExpression, scope: *Scope) ErrorKind!Value {
         const left = try self.evaluateExpression(expr.left, scope);
         const right = try self.evaluateExpression(expr.right, scope);
 
         return switch (left) {
             .integer => |l_val| switch (right) {
-                .integer => |r_val| try evaluateIntegerBinaryExpression(expr.operator, l_val, r_val),
+                .integer => |r_val| try evaluateIntegerExpression(expr.operator, l_val, r_val),
                 else => ErrorKind.MismatchedTypes,
             },
             .boolean => |l_val| switch (right) {
                 .boolean => |r_val| .{
-                    .boolean = try evaluateBooleanBinaryExpression(expr.operator, l_val, r_val),
+                    .boolean = try evaluateBooleanExpression(expr.operator, l_val, r_val),
                 },
                 else => ErrorKind.MismatchedTypes,
             },
             .string => |l_val| switch (right) {
                 .string => |r_val| blk: {
                     break :blk .{
-                        .string = try self.evaluateStringBinaryExpression(expr.operator, l_val, r_val),
+                        .string = try self.evaluateStringExpression(expr.operator, l_val, r_val),
                     };
                 },
                 else => ErrorKind.MismatchedTypes,
@@ -413,7 +411,7 @@ pub const Interpreter = struct {
         };
     }
 
-    fn evaluatePrefixBinaryExpression(self: *Self, expr: ast.PrefixBinaryExpression, scope: *Scope) ErrorKind!Value {
+    fn evaluatePrefixExpression(self: *Self, expr: ast.PrefixExpression, scope: *Scope) ErrorKind!Value {
         const right = try self.evaluateExpression(expr.right, scope);
         return switch (expr.left) {
             .negate => switch (right) {

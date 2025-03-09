@@ -26,23 +26,22 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    const lexer_tests = b.addTest(.{
-        .root_source_file = b.path("src/lexer.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const parser_tests = b.addTest(.{
-        .root_source_file = b.path("src/parser.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    parser_tests.root_module.addImport("pretty", pretty.module("pretty"));
-
-    const run_lexer_tests = b.addRunArtifact(lexer_tests);
-    const run_parser_tests = b.addRunArtifact(parser_tests);
-
     const test_step = b.step("test", "Run unit tests");
+    const test_files = [_][]const u8{
+        "src/lexer.zig",
+        "src/parser.zig",
+    };
 
-    test_step.dependOn(&run_lexer_tests.step);
-    test_step.dependOn(&run_parser_tests.step);
+    for (test_files) |path| {
+        const test_module = b.addTest(.{
+            .root_source_file = b.path(path),
+            .target = target,
+            .optimize = optimize,
+        });
+
+        test_module.root_module.addImport("pretty", pretty.module("pretty"));
+
+        const run_test = b.addRunArtifact(test_module);
+        test_step.dependOn(&run_test.step);
+    }
 }

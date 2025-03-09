@@ -1,18 +1,18 @@
-func println(str) {
-  print(str + "\n")
-};
+--func println(msg) {
+--  print(msg + "\n")
+--}
 
-let MAX_ITER = 250;
+-- operator precedence is correct as long as we're reading right to left
+-- so '10 - 10 * 5' is correct
+-- but '5 * 10 - 50' is incorrect
 
-func loop(i) {
-  if i < MAX_ITER {
-    println("iteraton: " + intToStr(i))
-    loop(i + 1)
-  }
-};
+-- parenthesis don't make a difference here
+-- let incorrect = 5 * (10 - 50) 
+-- parenthesis to force correct evaluation order
+-- let correct = (5 * 10) - 50
 
-let asstr = intToStr(10);
-println(intToStr(10))
--- loop(0)
 
--- dbg(builtins)
+-- println("correct: " + intToStr(correct))
+-- println("incorrect: " + intToStr(incorrect))
+
+some() + call()

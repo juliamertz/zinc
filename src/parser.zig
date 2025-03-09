@@ -6,38 +6,7 @@ const lex = @import("lexer.zig");
 const Array = std.ArrayList;
 const eql = std.meta.eql;
 
-pub const ErrorKind = error{
-    IdentifierExpected,
-    AssignmentExpected,
-    SemicolonExpected,
-    IntegerExpected,
-    OperatorExpected,
-    ExpressionExpected,
-
-    IllegalKeyword,
-    IllegalIdentifier,
-
-    InvalidInteger,
-    InvalidOperator,
-    InvalidToken,
-
-    UnexpectedEof,
-    OutOfMemory,
-};
-
-pub const ParseError = struct {
-    kind: ErrorKind,
-    message: []const u8,
-    location: std.zig.Loc,
-};
-
-const Ordering = enum {
-    less,
-    equal,
-    greater,
-};
-
-const Precende = enum {
+const Precedence = enum {
     lowest,
     equals,
     less_greater,
@@ -63,16 +32,31 @@ const Precende = enum {
             else => .lowest,
         };
     }
+};
 
-    fn eq(self: *Self, other: *Self) Ordering {
-        if (@intFromEnum(self) == @intFromEnum(other)) {
-            return .equal;
-        } else if (@intFromEnum(self) > @intFromEnum(other)) {
-            return .greater;
-        } else {
-            return .less;
-        }
-    }
+pub const ErrorKind = error{
+    IdentifierExpected,
+    AssignmentExpected,
+    SemicolonExpected,
+    IntegerExpected,
+    OperatorExpected,
+    ExpressionExpected,
+
+    IllegalKeyword,
+    IllegalIdentifier,
+
+    InvalidInteger,
+    InvalidOperator,
+    InvalidToken,
+
+    UnexpectedEof,
+    OutOfMemory,
+};
+
+pub const ParseError = struct {
+    kind: ErrorKind,
+    message: []const u8,
+    location: std.zig.Loc,
 };
 
 pub const Parser = struct {
@@ -152,7 +136,7 @@ pub const Parser = struct {
         );
     }
 
-    /// Skip current token if it is of the expected kind
+    /// Skip current token if it is of the expected kind, otherwise do nothing
     fn skipToken(self: *Self, expected: lex.Token) void {
         if (eql(self.curr_token, expected)) {
             self.next();
@@ -199,7 +183,7 @@ pub const Parser = struct {
     fn parseNode(self: *Self) ErrorKind!ast.Node {
         return switch (self.curr_token) {
             .keyword => |kw| switch (kw) {
-                .match, .@"if" => .{ .expression = try self.parseExpression() },
+                .match, .@"if" => .{ .expression = try self.parseExpression(.lowest) },
                 else => .{ .statement = try self.parseStatement() },
             },
             .ident => blk: {
@@ -207,7 +191,7 @@ pub const Parser = struct {
                 if (self.peek_token == .equal) {
                     const ident = try self.parseIdentifier();
                     try self.consumeToken(.equal);
-                    const expr = try self.parseExpression();
+                    const expr = try self.parseExpression(.lowest);
                     self.skipToken(.semicolon);
 
                     break :blk .{
@@ -219,11 +203,11 @@ pub const Parser = struct {
                         },
                     };
                 } else {
-                    break :blk .{ .expression = try self.parseExpression() };
+                    break :blk .{ .expression = try self.parseExpression(.lowest) };
                 }
             },
             else => blk: {
-                const expr = try self.parseExpression();
+                const expr = try self.parseExpression(.lowest);
                 self.skipToken(.semicolon);
                 break :blk .{ .expression = expr };
             },
@@ -265,7 +249,7 @@ pub const Parser = struct {
     }
 
     // Check if current token is an infix operator
-    fn scanInfixOperator(self: *Self) ErrorKind!ast.InfixOperator {
+    fn scanInfixOperator(self: *Self) ErrorKind!?ast.InfixOperator {
         return switch (self.curr_token) {
             .equal => switch (self.peek_token) {
                 .equal => .equal,
@@ -296,16 +280,18 @@ pub const Parser = struct {
                     .{val},
                 ),
             },
-            else => return self.errorMessage(
-                ErrorKind.OperatorExpected,
-                "Operator expected, found {any}",
-                .{self.curr_token},
-            ),
+            else => null,
         };
     }
 
+    /// Wrapper around `scanInfixOperator` that returns an error if no infix operator is found at current position
     fn parseInfixOperator(self: *Self) ErrorKind!ast.InfixOperator {
-        const operator = try self.scanInfixOperator();
+        const operator = try self.scanInfixOperator() orelse return self.errorMessage(
+            ErrorKind.OperatorExpected,
+            "Expected an infix operator got: {any}",
+            .{self.curr_token},
+        );
+
         switch (operator) {
             .less_than_or_eq, .greater_than_or_eq, .range, .equal => self.next(),
             else => {},
@@ -315,14 +301,18 @@ pub const Parser = struct {
     }
 
     fn parsePrefixOperator(self: *Self) ErrorKind!ast.PrefixOperator {
-        const operator = try self.scanPrefixOperator();
+        const operator = self.scanPrefixOperator() orelse return self.errorMessage(
+            ErrorKind.OperatorExpected,
+            "Expected an operator got: {any}",
+            .{self.curr_token},
+        );
         self.next();
         return operator;
     }
 
     fn parseIndexExpression(self: *Self, value: ast.Expression) ErrorKind!ast.IndexExpression {
         try self.consumeToken(.lbracket);
-        const index = try self.parseExpression();
+        const index = try self.parseExpression(.lowest);
         try self.consumeToken(.rbracket);
         return ast.IndexExpression{
             .index = index,
@@ -355,9 +345,7 @@ pub const Parser = struct {
     }
 
     fn parseFunctionArgument(self: *Self) ErrorKind!ast.FunctionArgument {
-        return ast.FunctionArgument{
-            .identifier = try self.parseIdentifier(),
-        };
+        return .{ .identifier = try self.parseIdentifier() };
     }
 
     fn parseOptionalElseStatement(self: *Self) ErrorKind!?ast.Block {
@@ -367,12 +355,12 @@ pub const Parser = struct {
 
     fn parseIfElseExpression(self: *Self) ErrorKind!ast.IfExpression {
         try self.consumeKeyword(.@"if");
-        const expr = try self.parseExpression();
+        const expr = try self.parseExpression(.lowest);
         const block = try self.parseBlock();
         // FIX: legitimate errors while parsing else statements are ignored
         const alternative = self.parseOptionalElseStatement() catch null;
 
-        return ast.IfExpression{
+        return .{
             .condition = expr,
             .consequence = block,
             .alternative = alternative,
@@ -381,7 +369,7 @@ pub const Parser = struct {
 
     fn parseMatchExpression(self: *Self) ErrorKind!ast.MatchExpression {
         self.next();
-        const value = try self.parseExpression();
+        const value = try self.parseExpression(.lowest);
         try self.consumeToken(.lsquirly);
 
         var arms = Array(ast.MatchArm).init(self.alloc);
@@ -405,7 +393,7 @@ pub const Parser = struct {
         try self.consumeToken(.minus);
         try self.consumeToken(.rangle);
 
-        const expr = try self.parseExpression();
+        const expr = try self.parseExpression(.lowest);
         try self.consumeToken(.comma);
 
         const arm = ast.MatchArm{
@@ -470,13 +458,12 @@ pub const Parser = struct {
         }
     }
 
-    // TODO: this is different from range patterns as patterns can only use literal numbers and no identifiers etc.
     fn parseRangeExpression(self: *Self, left: ast.Expression) ErrorKind!ast.RangeExpression {
         try self.consumeToken(.dot);
         try self.consumeToken(.dot);
         return ast.RangeExpression{
             .left = left,
-            .right = try self.parseExpression(),
+            .right = try self.parseExpression(.lowest),
         };
     }
 
@@ -500,7 +487,7 @@ pub const Parser = struct {
         try self.consumeToken(.lparen);
 
         while (!eql(self.curr_token, .rparen)) {
-            const arg = try self.parseExpression();
+            const arg = try self.parseExpression(.lowest);
             try arguments.append(arg);
 
             if (self.curr_token == .comma) {
@@ -558,7 +545,7 @@ pub const Parser = struct {
 
     fn parseReturnStatement(self: *Self) ErrorKind!ast.ReturnStatement {
         self.next();
-        const expr = try self.parseExpression();
+        const expr = try self.parseExpression(.lowest);
         self.skipToken(.semicolon);
 
         return ast.ReturnStatement{
@@ -577,7 +564,7 @@ pub const Parser = struct {
 
         const res = ast.LetStatement{
             .identifier = ident,
-            .value = try self.parseExpression(),
+            .value = try self.parseExpression(.lowest),
             .mutable = mutable,
         };
 
@@ -586,18 +573,26 @@ pub const Parser = struct {
         return res;
     }
 
-    fn parseExpression(
-        self: *Self,
-    ) ErrorKind!ast.Expression {
-        if (self.scanPrefixOperator()) |operator| {
-            return .{ .prefix_operator = try self.parsePrefixBinaryExpression(operator) };
-        }
+    // TODO: think of a better name, this is too similar to `parsePrefixExpression` which has a different use
+    fn parsePrefix(self: *Self) ErrorKind!ast.Expression {
+        return switch (self.curr_token) {
+            .ident => |ident| blk: {
+                self.next();
+                break :blk .{ .identifier = ident };
+            },
 
-        const expr: ast.Expression = switch (self.curr_token) {
             .integer => |val| blk: {
                 self.next();
                 break :blk .{ .integer_literal = val };
             },
+
+            .bang, .minus => blk: {
+                const operator = try self.parsePrefixOperator();
+                break :blk .{
+                    .prefix_operator = try self.parsePrefixExpression(operator),
+                };
+            },
+
             .keyword => |val| switch (val) {
                 .true => blk: {
                     self.next();
@@ -626,16 +621,6 @@ pub const Parser = struct {
                 },
                 else => return self.errorMessage(ErrorKind.IllegalKeyword, "", .{}),
             },
-            .ident => |ident| blk: {
-                if (eql(self.peek_token, .lparen)) {
-                    const expr = try self.alloc.create(ast.FunctionCall);
-                    self.next();
-                    expr.* = try self.parseFunctionCallExpression(ident);
-                    break :blk .{ .function_call = expr };
-                }
-                self.next();
-                break :blk .{ .identifier = ident };
-            },
             .string_literal => |value| blk: {
                 self.next();
                 break :blk .{ .string_literal = value };
@@ -646,34 +631,80 @@ pub const Parser = struct {
                 break :blk .{ .grouped_expression = expr };
             },
             .lsquirly => blk: {
-                const expr = try self.alloc.create(ast.ObjectLiteral);
-                expr.* = try self.parseObjectLiteral();
-                break :blk .{ .object_literal = expr };
+                const expr = try self.alloc.create(ast.ModuleLiteral);
+                expr.* = try self.parseModuleLiteral();
+                break :blk .{ .module_literal = expr };
             },
             .lbracket => .{ .list = try self.parseListExpression() },
-            .eof => unreachable,
+
             else => return self.errorMessage(
                 ErrorKind.ExpressionExpected,
-                "Expected an expression found: {any}",
+                "Expected a prefix expression found: {any}",
                 .{self.curr_token},
             ),
         };
+    }
 
-        if (self.curr_token == .lbracket) {
-            const index_expr = try self.alloc.create(ast.IndexExpression);
-            index_expr.* = try self.parseIndexExpression(expr);
-            return .{ .index = index_expr };
-        }
+    // TODO: rename function
+    fn parseInfix(self: *Self, left: ast.Expression) ErrorKind!?ast.Expression {
+        return switch (self.curr_token) {
+            // TODO: This doesn't cover all infix cases, maybe attempt to parse an operator and switch on that?
+            .plus,
+            .minus,
+            .forward_slash,
+            .asterisk,
+            .equal,
+            .rangle,
+            .langle,
+            .dot,
+            => .{ .infix_operator = try self.parseInfixExpression(left) },
 
-        switch (self.curr_token) {
-            .semicolon, .lsquirly, .rparen => return expr,
-            else => {},
-        }
+            .lparen => blk: {
+                const identifier = switch (left) {
+                    .identifier => |value| value,
+                    else => return self.errorMessage(ErrorKind.IdentifierExpected, "Expected identifer for function call got: {any}", .{self.curr_token}),
+                };
 
-        _ = self.scanInfixOperator() catch return expr;
-        return .{
-            .infix_operator = try self.parseInfixBinaryExpression(expr),
+                const call_expr = try self.alloc.create(ast.FunctionCall);
+                call_expr.* = try self.parseFunctionCallExpression(identifier);
+
+                // FIX: seems a little hacky to optionally recurse here
+                // it works though ¯\_(ツ)_/¯
+                // TODO: does this messes with operator precendence once implemented?
+                const expr = ast.Expression{ .function_call = call_expr };
+                if (try self.scanInfixOperator()) |_| {
+                    break :blk self.parseInfix(expr);
+                }
+                break :blk expr;
+            },
+
+            .lbracket => blk: {
+                const index_expr = try self.alloc.create(ast.IndexExpression);
+                index_expr.* = try self.parseIndexExpression(left);
+                break :blk .{ .index = index_expr };
+            },
+
+            else => null,
         };
+    }
+
+    fn parseExpression(self: *Self, _: Precedence) ErrorKind!ast.Expression {
+        const leftExpr = try self.parsePrefix();
+        // std.debug.print("precedence: {any} of value {d}\n", .{ precedence, @intFromEnum(precedence) });
+
+        // TODO: do we even need this check?
+        // switch (self.curr_token) {
+        //     .semicolon => return leftExpr,
+        //     else => {},
+        // }
+
+        // TODO: operator precedence
+        if (try self.parseInfix(leftExpr)) |infix| {
+            std.debug.print("found an infix for {any}: {any}\n", .{ leftExpr, infix });
+            return infix;
+        }
+
+        return leftExpr;
     }
 
     fn parseForStatement(self: *Self) ErrorKind!ast.ForStatement {
@@ -694,7 +725,7 @@ pub const Parser = struct {
         try self.expectKeyword(.in);
         self.next();
 
-        const value = try self.parseExpression();
+        const value = try self.parseExpression(.lowest);
         const block = try self.parseBlock();
 
         return ast.ForStatement{
@@ -708,7 +739,7 @@ pub const Parser = struct {
         try self.expectKeyword(.@"while");
         self.next();
 
-        const condition = try self.parseExpression();
+        const condition = try self.parseExpression(.lowest);
         const block = try self.parseBlock();
 
         return ast.WhileStatement{
@@ -717,29 +748,29 @@ pub const Parser = struct {
         };
     }
 
-    fn parseObjectField(self: *Self) ErrorKind!ast.ObjectField {
+    fn parseModuleField(self: *Self) ErrorKind!ast.ModuleField {
         const ident = try self.parseIdentifier();
         try self.consumeToken(.colon);
-        const value = try self.parseExpression();
+        const value = try self.parseExpression(.lowest);
 
-        return ast.ObjectField{
+        return ast.ModuleField{
             .identifier = ident,
             .value = value,
         };
     }
 
-    fn parseObjectLiteral(self: *Self) ErrorKind!ast.ObjectLiteral {
+    fn parseModuleLiteral(self: *Self) ErrorKind!ast.ModuleLiteral {
         try self.consumeToken(.lsquirly);
 
-        var fields = Array(ast.ObjectField).init(self.alloc);
+        var fields = Array(ast.ModuleField).init(self.alloc);
         while (self.curr_token != .rsquirly) {
-            const field = try self.parseObjectField();
+            const field = try self.parseModuleField();
             try fields.append(field);
             if (self.curr_token == .comma) self.next();
         }
 
         try self.consumeToken(.rsquirly);
-        return ast.ObjectLiteral{
+        return ast.ModuleLiteral{
             .fields = fields.items,
         };
     }
@@ -750,7 +781,7 @@ pub const Parser = struct {
 
         var expressions = Array(ast.Expression).init(self.alloc);
         while (self.curr_token != .rbracket) {
-            const e = try self.parseExpression();
+            const e = try self.parseExpression(.lowest);
             try expressions.append(e);
             if (self.curr_token == .comma) self.next(); // TODO: nice error if comma is missing between items
         }
@@ -762,32 +793,30 @@ pub const Parser = struct {
     /// Parse expression surrounded by parentheses
     fn parseGroupedExpression(self: *Self) ErrorKind!ast.GroupedExpression {
         try self.consumeToken(.lparen);
-        const expr = try self.parseExpression();
+        const expr = try self.parseExpression(.lowest);
         try self.consumeToken(.rparen);
         return .{ .expression = expr };
     }
 
-    // TODO: operator precedence
-    // A discussion with Casey Muratori about how easy precedence is...
-    // https://www.youtube.com/watch?v=fIPO4G42wYE&t=6165s
-    fn parseInfixBinaryExpression(self: *Self, left: ast.Expression) ErrorKind!*ast.InfixBinaryExpression {
+    fn parseInfixExpression(self: *Self, left: ast.Expression) ErrorKind!*ast.InfixExpression {
         const op = try self.parseInfixOperator();
-        const expr = try self.alloc.create(ast.InfixBinaryExpression);
-        expr.* = ast.InfixBinaryExpression{
+        const expr = try self.alloc.create(ast.InfixExpression);
+
+        const precendence = Precedence.fromInfixOperator(op);
+        expr.* = ast.InfixExpression{
             .left = left,
             .operator = op,
-            .right = try self.parseExpression(),
+            .right = try self.parseExpression(precendence),
         };
 
         return expr;
     }
 
-    fn parsePrefixBinaryExpression(self: *Self, left: ast.PrefixOperator) ErrorKind!*ast.PrefixBinaryExpression {
-        self.next();
-        const expr = try self.alloc.create(ast.PrefixBinaryExpression);
-        expr.* = ast.PrefixBinaryExpression{
+    fn parsePrefixExpression(self: *Self, left: ast.PrefixOperator) ErrorKind!*ast.PrefixExpression {
+        const expr = try self.alloc.create(ast.PrefixExpression);
+        expr.* = ast.PrefixExpression{
             .left = left,
-            .right = try self.parseExpression(),
+            .right = try self.parseExpression(.prefix),
         };
         return expr;
     }
@@ -954,6 +983,23 @@ test "Parse - operator expressions" {
     );
 }
 
+test "Parse - prefix operators" {
+    try expectAst("!true",
+        \\.expression:
+        \\  .prefix_operator:
+        \\    .left: .negate
+        \\    .right:
+        \\      .boolean: true
+    );
+    try expectAst("-20",
+        \\.expression:
+        \\  .prefix_operator:
+        \\    .left: .minus
+        \\    .right:
+        \\      .integer_literal: 20
+    );
+}
+
 test "Parse - conditionals" {
     try expectAst(
         \\if 100 > 50 {
@@ -1079,6 +1125,17 @@ test "Parse - list expression" {
     );
 }
 
+test "Parse - index expression" {
+    try expectAst("my_list[10]",
+        \\.expression:
+        \\  .index:
+        \\    .value:
+        \\      .identifier: "my_list"
+        \\    .index:
+        \\      .integer_literal: 10
+    );
+}
+
 test "Parse - for loop" {
     try expectAst(
         \\ for i, item in items {
@@ -1120,5 +1177,37 @@ test "Parse - while loop" {
         \\            .value:
         \\              .integer_literal: 20
         \\            .mutable: false
+    );
+}
+
+test "Parse - module definition" {
+    try expectAst(
+        \\{
+        \\  intToStr: "todo"
+        \\}
+    ,
+        \\.expression:
+        \\  .module_literal:
+        \\    .fields:
+        \\      .identifier: "intToStr"
+        \\      .value:
+        \\        .string_literal: "todo"
+    );
+}
+
+test "Parse - module field access" {
+    try expectAst(
+        \\builtins.intToStr(10)
+    ,
+        \\.expression:
+        \\  .infix_operator:
+        \\    .left:
+        \\      .identifier: "builtins"
+        \\    .operator: .chain
+        \\    .right:
+        \\      .function_call:
+        \\        .identifier: "intToStr"
+        \\        .arguments:
+        \\          .integer_literal: 10
     );
 }
