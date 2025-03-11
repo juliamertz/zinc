@@ -127,7 +127,7 @@ pub const Interpreter = struct {
             .kind = kind,
             .message = std.fmt.allocPrint(self.alloc, msg, args) catch "failed to print message??",
         };
-        self.errors.append(err) catch @panic("unable to allocate for ParseError");
+        try self.errors.append(err);
         return kind;
     }
 
@@ -162,9 +162,7 @@ pub const Interpreter = struct {
     fn evaluateNode(self: *Self, node: ast.Node, scope: *Scope) ErrorKind!?Value {
         switch (node) {
             .statement => |s| {
-                if (try self.evaluateStatement(s, scope)) |value| {
-                    return value;
-                }
+                if (try self.evaluateStatement(s, scope)) |value| return value;
             },
             .expression => |e| {
                 return try self.evaluateExpression(e, scope);
@@ -235,7 +233,10 @@ pub const Interpreter = struct {
                 }
             },
             .boolean => |val| .{ .boolean = val },
-            .string_literal => |val| .{ .string = try utils.preEscapeString(self.alloc, val) },
+            .string_literal => |val| .{
+                // TODO: pre escape in lexing stage?
+                .string = try utils.preEscapeString(self.alloc, val),
+            },
             .function_literal => |f| .{
                 .function = .{ .body = f.body, .arguments = f.arguments },
             },
