@@ -24,16 +24,15 @@ pub fn repeatString(allocator: std.mem.Allocator, s: []const u8, n: usize) ![]u8
     return std.mem.join(allocator, "", result);
 }
 
-/// return new string with interpolated escape sequences
-/// for example: .{ '\\', 'n' } returns .{ '\n' }
-pub fn preEscapeString(allocator: std.mem.Allocator, str: []const u8) ![]const u8 {
+/// return new string with pre-escaped escape sequences
+pub fn preEscape(allocator: std.mem.Allocator, str: []const u8) ![]const u8 {
     var buff = try allocator.alloc(u8, str.len);
 
-    var i: u8 = 0;
-    var j: u8 = 0;
-    while (i < str.len) {
-        if (str[i] == '\\') {
-            const escaped: ?u8 = switch (str[i + 1]) {
+    var char_idx: u8 = 0;
+    var buff_idx: u8 = 0;
+    while (char_idx < str.len) {
+        if (str[char_idx] == '\\') {
+            const escaped: ?u8 = switch (str[char_idx + 1]) {
                 'n' => '\n',
                 'r' => '\r',
                 't' => '\t',
@@ -43,18 +42,24 @@ pub fn preEscapeString(allocator: std.mem.Allocator, str: []const u8) ![]const u
                 else => null,
             };
             if (escaped) |val| {
-                buff[j] = val;
-                i += 1; // skip escaped charachter
+                buff[buff_idx] = val;
+                char_idx += 1; // skip escaped charachter
             }
         } else {
-            buff[j] = str[i];
+            buff[buff_idx] = str[char_idx];
         }
 
-        j += 1;
-        i += 1;
+        buff_idx += 1;
+        char_idx += 1;
     }
 
-    return buff;
+    return buff[0..buff_idx];
+}
+
+test "string pre-escaping" {
+    const expected = "\"\n\t\"";
+    const actual = try preEscape(std.heap.page_allocator, "\"\\n\\t\"");
+    try std.testing.expectEqualStrings(expected, actual);
 }
 
 pub fn printAst(alloc: std.mem.Allocator, value: anytype) !void {
@@ -72,7 +77,7 @@ pub fn printAst(alloc: std.mem.Allocator, value: anytype) !void {
 // fn errorMessage(self: *Self, kind: ErrorKind, comptime msg: []const u8, args: anytype) ErrorKind {
 
 pub fn debug(msg: []const u8, value: anytype) !void {
-    const stdout = std.io.getStdOut().writer();
+    const stderr = std.io.getStdErr().writer();
     const printed = try pretty.dump(std.heap.page_allocator, value, .{
         .print_extra_empty_line = true,
         .max_depth = std.math.maxInt(u8),
@@ -80,7 +85,7 @@ pub fn debug(msg: []const u8, value: anytype) !void {
         .show_type_names = false,
     });
 
-    try stdout.writeAll(msg);
-    try stdout.writeAll(":\n");
-    try stdout.writeAll(printed);
+    try stderr.writeAll(msg);
+    try stderr.writeAll(":\n");
+    try stderr.writeAll(printed);
 }

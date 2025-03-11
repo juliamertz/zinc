@@ -5,5 +5,4 @@ result
 .zig-cache
 zig-out
 
-# output from failed test
-actual
+test-out

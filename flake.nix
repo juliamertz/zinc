@@ -9,7 +9,12 @@
   };
 
   outputs =
-    { nixpkgs, zon2nix, ... }:
+    {
+      self,
+      nixpkgs,
+      zon2nix,
+      ...
+    }:
     let
       forAllSystems =
         function:
@@ -34,17 +39,57 @@
 
             meta.mainProgram = finalAttrs.pname;
           });
+
+          llvmPackages = llvmPackages_19.override {
+            src = fetchFromGitHub {
+              owner = "jacobly0";
+              repo = "llvm-project";
+              rev = "005a99ce2569373524bd881207aa4a1e98a2b238";
+              hash = "sha256-g9AVQF48HvaOzwm6Fr935+2+Ch+nvUV2afygb3iUflw=";
+            };
+          };
         }
       );
 
       devShells = forAllSystems (
-        pkgs: with pkgs; {
+        pkgs:
+        with pkgs;
+        let
+          shellScripts = {
+            run = # sh
+              "zig build run --prominent-compile-errors -- $@";
+            watch = # sh
+              "zig build run --watch --prominent-compile-errors -- $@";
+            debug = # sh
+              ''
+                zig build && lldb ./zig-out/bin/zinc
+              '';
+            tests = # sh
+              ''
+                show_diff() {
+                  if test -d test-out; then
+                    ${lib.getExe delta} test-out/expected test-out/actual
+                  fi
+                }
+
+                rm -vrf test-out
+                zig build test
+              '';
+          };
+        in
+        {
           default = mkShell {
-            packages = [
-              zig
-              zls
-              zon2nix.packages.${system}.default
-            ];
+            packages =
+              [
+                zon2nix.packages.${system}.default
+                zig
+                zls
+              ]
+              ++ (with self.packages.${system}.llvmPackages; [
+                lldb
+                llvm
+              ])
+              ++ (lib.mapAttrsToList (key: value: writeShellScriptBin key value) shellScripts);
           };
         }
       );

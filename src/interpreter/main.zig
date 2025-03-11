@@ -196,7 +196,10 @@ pub const Interpreter = struct {
             },
             .assign => |stmnt| {
                 if (!scope.exists(stmnt.identifier)) {
-                    std.debug.print("tried to assign to non existing variable for assign: {s}\n", .{stmnt.identifier});
+                    std.debug.print(
+                        "tried to assign to non existing variable for assign: {s}\n",
+                        .{stmnt.identifier},
+                    );
                     return ErrorKind.NoSuchVariable;
                 } else {}
 
@@ -233,10 +236,7 @@ pub const Interpreter = struct {
                 }
             },
             .boolean => |val| .{ .boolean = val },
-            .string_literal => |val| .{
-                // TODO: pre escape in lexing stage?
-                .string = try utils.preEscapeString(self.alloc, val),
-            },
+            .string_literal => |val| .{ .string = val },
             .function_literal => |f| .{
                 .function = .{ .body = f.body, .arguments = f.arguments },
             },
@@ -349,11 +349,11 @@ pub const Interpreter = struct {
 
     fn evaluateIntegerExpression(op: ast.InfixOperator, left: i64, right: i64) ErrorKind!Value {
         return switch (op) {
-            .add => .{ .integer = left + right },
-            .subtract => .{ .integer = left - right },
-            .multiply => .{ .integer = left * right },
-            .divide => .{ .integer = @divTrunc(left, right) },
-            .equal => .{ .boolean = left == right },
+            .plus => .{ .integer = left + right },
+            .minus => .{ .integer = left - right },
+            .assign => .{ .integer = left * right },
+            .slash => .{ .integer = @divTrunc(left, right) },
+            .equals => .{ .boolean = left == right },
             .greater_than => .{ .boolean = left > right },
             .greater_than_or_eq => .{ .boolean = left >= right },
             .less_than => .{ .boolean = left < right },
@@ -364,16 +364,16 @@ pub const Interpreter = struct {
 
     fn evaluateBooleanExpression(op: ast.InfixOperator, left: bool, right: bool) ErrorKind!bool {
         return switch (op) {
-            .and_operator => left and right,
-            .or_operator => left or right,
-            .equal => left == right,
+            .@"and" => left and right,
+            .@"or" => left or right,
+            .equals => left == right,
             else => ErrorKind.IllegalOperator,
         };
     }
 
     fn evaluateStringExpression(self: *Self, op: ast.InfixOperator, left: []const u8, right: []const u8) ErrorKind![]const u8 {
         return switch (op) {
-            .add => {
+            .plus => {
                 const buff = [2][]const u8{ left, right };
                 const result = std.mem.join(self.alloc, "", &buff) catch @panic("can't join strings");
                 return result;

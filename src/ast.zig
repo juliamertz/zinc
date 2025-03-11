@@ -1,6 +1,8 @@
 const std = @import("std");
 const lex = @import("lexer.zig");
 
+pub const Identifier = []const u8;
+
 pub const Module = struct {
     nodes: []const Node,
 };
@@ -39,9 +41,18 @@ pub const Expression = union(enum) {
     integer_literal: i64,
     function_literal: *FunctionLiteral,
     module_literal: *ModuleLiteral,
-};
 
-pub const Identifier = []const u8;
+    const Self = @This();
+
+    /// return string content for identifier or string literal
+    pub fn text(self: Self) ?[]const u8 {
+        return switch (self) {
+            .string_literal => |val| val,
+            .identifier => |val| val,
+            else => null,
+        };
+    }
+};
 
 pub const GroupedExpression = struct {
     expression: Expression,
@@ -63,12 +74,12 @@ pub const RangeExpression = struct {
 };
 
 pub const AssingStatement = struct {
-    identifier: []const u8,
+    identifier: Identifier,
     value: Expression,
 };
 
 pub const LetStatement = struct {
-    identifier: []const u8,
+    identifier: Identifier,
     value: Expression,
     mutable: bool,
 };
@@ -98,7 +109,7 @@ pub const RangePattern = struct {
 pub const Pattern = union(enum) {
     range: RangePattern,
     literal: Expression,
-    irrefutable: Identifier,
+    irrefutable: Expression,
 };
 
 pub const FunctionArgument = struct {
@@ -106,7 +117,7 @@ pub const FunctionArgument = struct {
 };
 
 pub const FunctionStatement = struct {
-    identifier: []const u8,
+    identifier: Identifier,
     arguments: []FunctionArgument,
     body: Block,
 };
@@ -117,12 +128,12 @@ pub const FunctionLiteral = struct {
 };
 
 pub const FunctionCall = struct {
-    identifier: []const u8,
+    identifier: Identifier,
     arguments: []Expression,
 };
 
 pub const ForStatement = struct {
-    identifiers: [][]const u8,
+    identifiers: []Identifier,
     value: Expression,
     body: Block,
 };
@@ -158,19 +169,19 @@ pub const PrefixOperator = enum {
 };
 
 pub const InfixOperator = enum {
-    equal,
     assign,
     chain,
     range,
-    add,
-    subtract,
-    multiply,
-    divide,
+    plus,
+    minus,
+    asterisk,
+    slash,
+    equals,
     not_equal,
     less_than_or_eq,
     less_than,
     greater_than,
     greater_than_or_eq,
-    and_operator,
-    or_operator,
+    @"and",
+    @"or",
 };

@@ -45,37 +45,49 @@ pub const Keyword = enum {
 };
 
 pub const Token = union(enum) {
+    illegal,
+    eof,
+
     ident: []const u8,
-    integer: i64,
     keyword: Keyword,
+
+    integer_literal: i64,
     string_literal: []const u8,
 
+    // operators
+    assign,
     plus,
     minus,
-    equal,
-    asterisk,
-    forward_slash,
-    backward_slash,
-    ampersand,
-    pipe,
     bang,
+    asterisk,
+    slash,
+    pipe,
+    ampersand,
+    arrow,
 
-    dot,
+    @"and",
+    @"or",
+
+    equal,
+    not_equal,
+    less_than,
+    greater_than,
+    less_than_or_eq,
+    greater_than_or_eq,
+
+    dot, // TODO: rename to chain or smth
+
+    // delimiters
     comma,
     colon,
     semicolon,
 
-    langle,
-    rangle,
     lsquirly,
     rsquirly,
     lbracket,
     rbracket,
     lparen,
     rparen,
-
-    illegal,
-    eof,
 };
 
 pub const Lexer = struct {
@@ -122,26 +134,58 @@ pub const Lexer = struct {
 
     pub fn readToken(self: *Self) Token {
         self.skipWhitespace();
+        // TODO: implement new operators
         const token: Token = switch (self.current()) {
-            '=' => .equal,
+            '=' => blk: {
+                if (self.lookahead() == '=') {
+                    self.advance();
+                    break :blk .equal;
+                } else {
+                    break :blk .assign;
+                }
+            },
             '+' => .plus,
             '*' => .asterisk,
-            '/' => .forward_slash,
+            '/' => .slash,
             '-' => blk: {
-                // skip comments
-                if (self.lookahead() == '-') {
-                    while (self.current() != '\n') self.advance();
-                    self.skipWhitespace();
-                    break :blk self.readToken();
-                } else {
-                    break :blk .minus;
+                switch (self.lookahead()) {
+                    // skip comments
+                    '-' => {
+                        while (self.current() != '\n') self.advance();
+                        self.skipWhitespace();
+                        break :blk self.readToken();
+                    },
+                    '>' => break :blk .arrow,
+                    else => break :blk .minus,
                 }
             },
             '&' => .ampersand,
             '|' => .pipe,
-            '!' => .bang,
-            '<' => .langle,
-            '>' => .rangle,
+            '!' => blk: {
+                if (self.lookahead() == '=') {
+                    self.advance();
+                    break :blk .not_equal;
+                } else {
+                    break :blk .bang;
+                }
+            },
+            '<' => blk: {
+                if (self.lookahead() == '=') {
+                    self.advance();
+                    break :blk .less_than_or_eq;
+                } else {
+                    break :blk .less_than;
+                }
+            },
+            '>' => blk: {
+                if (self.lookahead() == '=') {
+                    self.advance();
+                    break :blk .greater_than_or_eq;
+                } else {
+                    break :blk .greater_than;
+                }
+            },
+
             '{' => .lsquirly,
             '}' => .rsquirly,
             '[' => .lbracket,
@@ -158,7 +202,9 @@ pub const Lexer = struct {
             },
             '"' => blk: {
                 self.advance();
-                break :blk .{ .string_literal = self.readUntil('"') };
+                const text = self.readUntil('"');
+                const pre_escaped = utils.preEscape(std.heap.page_allocator, text) catch @panic("buy more RAM"); // TODO: allocator
+                break :blk .{ .string_literal = pre_escaped };
             },
 
             'a'...'z', 'A'...'Z', '_' => blk: {
@@ -170,7 +216,7 @@ pub const Lexer = struct {
                 break :blk .{ .ident = ident };
             },
 
-            '0'...'9' => .{ .integer = self.readInt() catch @panic("unable to parse into i64") },
+            '0'...'9' => .{ .integer_literal = self.readInt() catch @panic("unable to parse into i64") },
 
             0 => .eof,
             else => .illegal,
@@ -207,101 +253,115 @@ pub const Lexer = struct {
     }
 };
 
-// tests
+fn expectLexerOutput(input: []const u8, expected_tokens: []const Token) !void {
+    var lexer = Lexer.new(input);
+    for (expected_tokens, 0..) |expected, i| {
+        const actual = lexer.readToken();
+        lexer.advance();
 
-fn expectLexerOutput(input: []const u8, expected: []const Token) !void {
-    var lex = Lexer.new(input);
-    for (expected) |token| {
-        const tok = lex.readToken();
-        lex.advance();
-        try std.testing.expectEqualDeep(token, tok);
+        if (@intFromEnum(actual) != @intFromEnum(expected)) {
+            std.debug.print(
+                "mismatching token at position {d}, expected: {any}, actual: {any}\n",
+                .{ i, expected, actual },
+            );
+        }
+
+        try std.testing.expectEqualDeep(expected, actual);
     }
 }
 
-test "Lexer - special charachters" {
+test "Lexer - operators" {
     try expectLexerOutput(
-        "=(*{}+,-);&|",
+        "=+-!*/|& and or",
         &[_]Token{
-            .equal,
-            .lparen,
-            .asterisk,
-            .lsquirly,
-            .rsquirly,
+            .assign,
             .plus,
-            .comma,
             .minus,
-            .rparen,
-            .semicolon,
-            .ampersand,
-            .pipe,
-            .eof,
-        },
-    );
-}
-
-test "Lexer - let statements" {
-    try expectLexerOutput(
-        "let value=10;",
-        &[_]Token{
-            .{ .keyword = .let },
-            .{ .ident = "value" },
-            .equal,
-            .{ .integer = 10 },
-            .semicolon,
-            .eof,
-        },
-    );
-
-    try expectLexerOutput(
-        "let value = 10;",
-        &[_]Token{
-            .{ .keyword = .let },
-            .{ .ident = "value" },
-            .equal,
-            .{ .integer = 10 },
-            .semicolon,
-            .eof,
-        },
-    );
-
-    try expectLexerOutput(
-        "let a = 2500;",
-        &[_]Token{
-            .{ .keyword = .let },
-            .{ .ident = "a" },
-            .equal,
-            .{ .integer = 2500 },
-            .semicolon,
-            .eof,
-        },
-    );
-}
-
-test "Lexer - let statement" {
-    try expectLexerOutput(
-        "let woof = true;",
-        &[_]Token{
-            .{ .keyword = .let },
-            .{ .ident = "woof" },
-            .equal,
-            .{ .keyword = .true },
-            .semicolon,
-            .eof,
-        },
-    );
-}
-
-test "Lexer - idk" {
-    try expectLexerOutput(
-        "let twohundredfifty = 25 * 10;",
-        &[_]Token{
-            .{ .keyword = .let },
-            .{ .ident = "twohundredfifty" },
-            .equal,
-            .{ .integer = 25 },
+            .bang,
             .asterisk,
-            .{ .integer = 10 },
+            .slash,
+            .pipe,
+            .ampersand,
+            .{ .keyword = .@"and" },
+            .{ .keyword = .@"or" },
+            .eof,
+        },
+    );
+
+    try expectLexerOutput(
+        "==!=<><=>=",
+        &[_]Token{
+            .equal,
+            .not_equal,
+            .less_than,
+            .greater_than,
+            .less_than_or_eq,
+            .greater_than_or_eq,
+            .eof,
+        },
+    );
+}
+
+test "Lexer - delimiters" {
+    try expectLexerOutput(
+        "{[()]}",
+        &[_]Token{
+            .lsquirly,
+            .lbracket,
+            .lparen,
+            .rparen,
+            .rbracket,
+            .rsquirly,
+            .eof,
+        },
+    );
+
+    try expectLexerOutput(
+        ":;,.",
+        &[_]Token{
+            .colon,
             .semicolon,
+            .comma,
+            .dot,
+            .eof,
+        },
+    );
+}
+
+test "Lexer - identifiers" {
+    try expectLexerOutput(
+        "hey young world",
+        &[_]Token{
+            .{ .ident = "hey" },
+            .{ .ident = "young" },
+            .{ .ident = "world" },
+            .eof,
+        },
+    );
+}
+
+test "Lexer - literals" {
+    try expectLexerOutput(
+        "\"hey young world\"",
+        &[_]Token{
+            .{ .string_literal = "hey young world" },
+            .eof,
+        },
+    );
+    try expectLexerOutput(
+        "325",
+        &[_]Token{
+            .{ .integer_literal = 325 },
+            .eof,
+        },
+    );
+}
+
+test "Lexer - pre-escaping" {
+    try expectLexerOutput(
+        "\"new\\nline\\ttab\"",
+        &[_]Token{
+            .{ .string_literal = "new\nline\ttab" },
             .eof,
         },
     );
