@@ -17,6 +17,16 @@ const Precedence = enum {
 
     const Self = @This();
 
+    fn fromOperator(operator: anytype) Self {
+        const T = @TypeOf(operator);
+        if (T == ast.InfixOperator) return fromInfixOperator(@as(T, operator)) //
+        else if (T == ast.PrefixOperator) return .prefix //
+        else @compileError(std.fmt.comptimePrint(
+            "Cannot get precendence for type: {any}",
+            .{@typeName(operator)},
+        ));
+    }
+
     fn fromInfixOperator(op: ast.InfixOperator) Self {
         return switch (op) {
             .not_equal,
@@ -473,7 +483,7 @@ pub const Parser = struct {
         return patterns.items;
     }
 
-    fn parseFunctionCallExpression(self: *Self, ident: ast.Identifier) ErrorKind!ast.FunctionCall {
+    fn parseFunctionCallExpression(self: *Self, left: ast.Expression) ErrorKind!ast.FunctionCall {
         var arguments = Array(ast.Expression).init(self.alloc);
         try self.consumeToken(.lparen);
 
@@ -489,8 +499,8 @@ pub const Parser = struct {
         try self.consumeToken(.rparen);
 
         return ast.FunctionCall{
+            .function = left,
             .arguments = arguments.items,
-            .identifier = ident,
         };
     }
 
@@ -564,12 +574,8 @@ pub const Parser = struct {
         return res;
     }
 
-    // fn peek_precedence(self: *Self) ErrorKind!?Precedence {
-    //     const peek_operator = self.scanInfixOperator();
-    // }
-
-    fn parseExpression(self: *Self, _: Precedence) ErrorKind!ast.Expression {
-        const leftExpr: ast.Expression =
+    fn parseExpression(self: *Self, precedence: Precedence) ErrorKind!ast.Expression {
+        var leftExpr: ast.Expression =
             switch (self.curr_token) {
                 .ident => .{ .identifier = try self.parseIdentifier() },
                 .integer_literal => try self.parseIntegerLiteral(),
@@ -625,50 +631,31 @@ pub const Parser = struct {
                 ),
             };
 
-        const infix: ?ast.Expression = switch (self.curr_token) {
-            .plus,
-            .minus,
-            .slash,
-            .asterisk,
-            .assign,
-            .dot,
-            => .{ .infix_operator = try self.parseInfixExpression(leftExpr) },
+        // while !self.peek_token_is(&TokenType::Semicolon) && precedence < self.peek_precedence()
+        while (self.peek_token != .semicolon and @intFromEnum(precedence) < 0) {
+            leftExpr = switch (self.curr_token) {
+                .plus,
+                .minus,
+                .slash,
+                .asterisk,
+                .assign,
+                .dot,
+                => .{ .infix_operator = try self.parseInfixExpression(leftExpr) },
 
-            .lparen => blk: {
-                const identifier = switch (leftExpr) {
-                    .identifier => |val| val,
-                    else => unreachable, // TODO:
-                };
+                .lparen => blk: {
+                    const call_expr = try self.alloc.create(ast.FunctionCall);
+                    call_expr.* = try self.parseFunctionCallExpression(leftExpr);
+                    break :blk ast.Expression{ .function_call = call_expr };
+                },
 
-                const call_expr = try self.alloc.create(ast.FunctionCall);
-                call_expr.* = try self.parseFunctionCallExpression(identifier);
+                .lbracket => blk: {
+                    const index_expr = try self.alloc.create(ast.IndexExpression);
+                    index_expr.* = try self.parseIndexExpression(leftExpr);
+                    break :blk .{ .index = index_expr };
+                },
 
-                // FIX: seems a little hacky to optionally recurse here
-                // it works though ¯\_(ツ)_/¯
-                // TODO: does this messes with operator precendence once implemented?
-                const expr = ast.Expression{ .function_call = call_expr };
-
-                // TODO:
-                // if (try self.parseInfixOperator()) |_| {
-                //     break :blk self.parseInfix(expr);
-                // }
-                break :blk expr;
-            },
-
-            .lbracket => blk: {
-                const index_expr = try self.alloc.create(ast.IndexExpression);
-                index_expr.* = try self.parseIndexExpression(leftExpr);
-                break :blk .{ .index = index_expr };
-            },
-
-            else => null,
-        };
-
-        // while (self.peek_token != .semicolon && @intFromEnum(precedence) < @intFromEnum())
-
-        if (infix) |val| {
-            // std.debug.print("found an infix for {any}: {any}\n", .{ leftExpr, infix });
-            return val;
+                else => null,
+            };
         }
 
         return leftExpr;
@@ -766,14 +753,12 @@ pub const Parser = struct {
     }
 
     fn parseInfixExpression(self: *Self, left: ast.Expression) ErrorKind!*ast.InfixExpression {
-        // TODO:
         const op = try self.parseInfixOperator() orelse unreachable;
         const expr = try self.alloc.create(ast.InfixExpression);
 
-        const precendence = Precedence.fromInfixOperator(op);
+        const precendence = Precedence.fromOperator(op);
         expr.* = ast.InfixExpression{
             .left = left,
-            // TODO:
             .operator = op,
             .right = try self.parseExpression(precendence),
         };

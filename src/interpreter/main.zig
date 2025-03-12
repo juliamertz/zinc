@@ -242,36 +242,35 @@ pub const Interpreter = struct {
             },
 
             .function_call => |func| {
-                if (builtins.fromStr(func.identifier)) |builtin| {
-                    var values = Array(Value).init(self.alloc);
-                    for (func.arguments) |exp| {
-                        const value = try self.evaluateExpression(exp, scope);
-                        try values.append(value);
-                    }
+                switch (func.function) {
+                    // TODO: remove this hack and put std in scope
+                    .identifier => |ident| if (builtins.fromStr(ident)) |builtin| {
+                        var values = Array(Value).init(self.alloc);
+                        for (func.arguments) |exp| {
+                            const value = try self.evaluateExpression(exp, scope);
+                            try values.append(value);
+                        }
 
-                    return builtin(values.items);
+                        return builtin(values.items);
+                    },
+                    else => {},
                 }
 
-                if (scope.retrieve(func.identifier)) |val| {
-                    const func_ptr = switch (val) {
-                        .function => |v| v,
-                        else => return ErrorKind.NotAFunction,
-                    };
+                const val = try self.evaluateExpression(func.function, scope);
+                const func_ptr = switch (val) {
+                    .function => |v| v,
+                    else => return ErrorKind.NotAFunction,
+                };
 
-                    var func_scope = Scope.init(self.alloc, scope);
-                    for (func.arguments, 0..) |argument, index| {
-                        const identifier = func_ptr.arguments[index].identifier;
-                        const value = try self.evaluateExpression(argument, &func_scope);
-                        // function bindings are always immutable
-                        func_scope.bind(identifier, .{ .mutable = false, .value = value });
-                    }
-
-                    const res = self.evaluateFunction(func_ptr.body, func_ptr.arguments, &func_scope);
-
-                    return res;
+                var func_scope = Scope.init(self.alloc, scope);
+                for (func.arguments, 0..) |argument, index| {
+                    const identifier = func_ptr.arguments[index].identifier;
+                    const value = try self.evaluateExpression(argument, &func_scope);
+                    // function bindings are always immutable
+                    func_scope.bind(identifier, .{ .mutable = false, .value = value });
                 }
 
-                return ErrorKind.NoSuchFunction;
+                return self.evaluateFunction(func_ptr.body, func_ptr.arguments, &func_scope);
             },
             .if_else => |stmnt| {
                 const value = try self.evaluateExpression(stmnt.condition, scope);

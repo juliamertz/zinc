@@ -1,7 +1,6 @@
-func println(msg) {
-  print(msg + "\n")
-}
-
+-- func println(msg) {
+--   print(msg + "\n")
+-- }
 -- -- operator precedence is correct as long as we're reading right to left
 -- -- so '10 - 10 * 5' is correct
 -- -- but '5 * 10 - 50' is incorrect
@@ -10,3 +9,6 @@ func println(msg) {
 -- let incorrect = 5 * 10 - 50
 -- println("correct: " + intToStr(correct))
 -- println("incorrect: " + intToStr(incorrect))
+
+let a = 10 + 20
+

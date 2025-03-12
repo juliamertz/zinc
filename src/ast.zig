@@ -128,7 +128,7 @@ pub const FunctionLiteral = struct {
 };
 
 pub const FunctionCall = struct {
-    identifier: Identifier,
+    function: Expression,
     arguments: []Expression,
 };
 
