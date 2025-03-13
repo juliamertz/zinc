@@ -16,6 +16,4 @@ func println(msg) {
 -- println("a: " + intToStr(a))
 -- println("b: " + intToStr(b))
 
-let some_mod = {}
-
-some_mod.print()
+let is = one == other

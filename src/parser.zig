@@ -156,7 +156,6 @@ pub const Parser = struct {
         self.next();
     }
 
-    
     pub fn parseModule(self: *Self) ErrorKind!ast.Module {
         return .{ .nodes = try self.parseNodes() };
     }
@@ -286,6 +285,7 @@ pub const Parser = struct {
             },
             .dot => .chain,
             .not_equal => .not_equal,
+            .equal => .equals,
             .less_than_or_eq => .less_than_or_eq,
             .less_than => .less_than,
             .greater_than => .greater_than,
@@ -890,7 +890,7 @@ test "Parse - return" {
     );
 }
 
-test "Parse - operator expressions" {
+test "Parse - operators" {
     try expectAst("let name = 25*10;",
         \\.statement:
         \\  .let:
@@ -903,6 +903,15 @@ test "Parse - operator expressions" {
         \\        .right:
         \\          .integer_literal: 10
         \\    .mutable: false
+    );
+    try expectAst("one == other",
+        \\.expression:
+        \\  .infix_operator:
+        \\    .left:
+        \\      .identifier: "one"
+        \\    .operator: .equals
+        \\    .right:
+        \\      .identifier: "other"
     );
     try expectAst("let name = 25 * 10 - 50;",
         \\.statement:
