@@ -16,6 +16,7 @@ const Precedence = enum {
     prefix, // -a or !a
     call, // func()
     index, // list[0]
+    chain, // mod.field
 
     const Self = @This();
 
@@ -36,35 +37,7 @@ const Precedence = enum {
 
             .lbracket => .index,
             .lparen => .call,
-
-            else => .lowest,
-        };
-    }
-
-    fn fromOperator(operator: anytype) Self {
-        const T = @TypeOf(operator);
-        if (T == ast.InfixOperator) return fromInfixOperator(@as(T, operator)) //
-        else if (T == ast.PrefixOperator) return .prefix //
-        else @compileError(std.fmt.comptimePrint(
-            "Cannot get precendence for type: {any}",
-            .{@typeName(operator)},
-        ));
-    }
-
-    fn fromInfixOperator(op: ast.InfixOperator) Self {
-        return switch (op) {
-            .not_equal,
-            .equals,
-            => .equals,
-
-            .plus, .minus => .sum,
-            .asterisk, .slash => .product,
-
-            .less_than_or_eq,
-            .less_than,
-            .greater_than,
-            .greater_than_or_eq,
-            => .less_greater,
+            .dot => .chain,
 
             else => .lowest,
         };
@@ -321,6 +294,7 @@ pub const Parser = struct {
             .lbracket => {
                 @panic("found lbrakcet in infix operator");
             },
+            .dot => .chain,
             .not_equal => .not_equal,
             .less_than_or_eq => .less_than_or_eq,
             .less_than => .less_than,
@@ -660,12 +634,12 @@ pub const Parser = struct {
 
         while (self.curr_token != .semicolon and self.curr_token != .eof and @intFromEnum(precedence) < @intFromEnum(Precedence.fromToken(self.curr_token))) {
             switch (self.curr_token) {
+                .dot,
                 .plus,
                 .minus,
                 .slash,
                 .asterisk,
                 .assign,
-                .dot,
                 .less_than,
                 .greater_than,
                 .less_than_or_eq,
@@ -787,10 +761,10 @@ pub const Parser = struct {
     }
 
     fn parseInfixExpression(self: *Self, left: ast.Expression) ErrorKind!*ast.InfixExpression {
+        const precendence = Precedence.fromToken(self.curr_token);
         const op = try self.parseInfixOperator() orelse unreachable;
         const expr = try self.alloc.create(ast.InfixExpression);
 
-        const precendence = Precedence.fromOperator(op);
         expr.* = ast.InfixExpression{
             .left = left,
             .operator = op,
@@ -930,52 +904,54 @@ test "Parse - return" {
     );
 }
 
-// test "Parse - operator expressions" {
-//     try expectAst("let name = 25*10;",
-//         \\.statement:
-//         \\  .let:
-//         \\    .identifier: "name"
-//         \\    .value:
-//         \\      .infix_operator:
-//         \\        .left:
-//         \\          .integer_literal: 25
-//         \\        .operator: .asterisk
-//         \\        .right:
-//         \\          .integer_literal: 10
-//         \\    .mutable: false
-//     );
-//     try expectAst("let name = 25 * 10 - 50;",
-//         \\.statement:
-//         \\  .let:
-//         \\    .identifier: "name"
-//         \\    .value:
-//         \\      .infix_operator:
-//         \\        .left:
-//         \\          .integer_literal: 25
-//         \\        .operator: .asterisk
-//         \\        .right:
-//         \\          .infix_operator:
-//         \\            .left:
-//         \\              .integer_literal: 10
-//         \\            .operator: .minus
-//         \\            .right:
-//         \\              .integer_literal: 50
-//         \\    .mutable: false
-//     );
-//     try expectAst("some() + value()",
-//         \\.expression:
-//         \\  .infix_operator:
-//         \\    .left:
-//         \\      .function_call:
-//         \\        .identifier: "some"
-//         \\        .arguments: (empty)
-//         \\    .operator: .add
-//         \\    .right:
-//         \\      .function_call:
-//         \\        .identifier: "value"
-//         \\        .arguments: (empty)
-//     );
-// }
+test "Parse - operator expressions" {
+    try expectAst("let name = 25*10;",
+        \\.statement:
+        \\  .let:
+        \\    .identifier: "name"
+        \\    .value:
+        \\      .infix_operator:
+        \\        .left:
+        \\          .integer_literal: 25
+        \\        .operator: .asterisk
+        \\        .right:
+        \\          .integer_literal: 10
+        \\    .mutable: false
+    );
+    try expectAst("let name = 25 * 10 - 50;",
+        \\.statement:
+        \\  .let:
+        \\    .identifier: "name"
+        \\    .value:
+        \\      .infix_operator:
+        \\        .left:
+        \\          .infix_operator:
+        \\            .left:
+        \\              .integer_literal: 25
+        \\            .operator: .asterisk
+        \\            .right:
+        \\              .integer_literal: 10
+        \\        .operator: .minus
+        \\        .right:
+        \\          .integer_literal: 50
+        \\    .mutable: false
+    );
+    try expectAst("some() + value()",
+        \\.expression:
+        \\  .infix_operator:
+        \\    .left:
+        \\      .function_call:
+        \\        .function:
+        \\          .identifier: "some"
+        \\        .arguments: (empty)
+        \\    .operator: .plus
+        \\    .right:
+        \\      .function_call:
+        \\        .function:
+        \\          .identifier: "value"
+        \\        .arguments: (empty)
+    );
+}
 
 test "Parse - prefix operators" {
     try expectAst("!true",
@@ -1192,19 +1168,20 @@ test "Parse - module definition" {
     );
 }
 
-// test "Parse - module field access" {
-//     try expectAst(
-//         \\builtins.intToStr(10)
-//     ,
-//         \\.expression:
-//         \\  .infix_operator:
-//         \\    .left:
-//         \\      .identifier: "builtins"
-//         \\    .operator: .chain
-//         \\    .right:
-//         \\      .function_call:
-//         \\        .identifier: "intToStr"
-//         \\        .arguments:
-//         \\          .integer_literal: 10
-//     );
-// }
+test "Parse - module field access" {
+    try expectAst(
+        \\builtins.intToStr(10)
+    ,
+        \\.expression:
+        \\  .function_call:
+        \\    .function:
+        \\      .infix_operator:
+        \\        .left:
+        \\          .identifier: "builtins"
+        \\        .operator: .chain
+        \\        .right:
+        \\          .identifier: "intToStr"
+        \\    .arguments:
+        \\      .integer_literal: 10
+    );
+}

@@ -350,14 +350,14 @@ pub const Interpreter = struct {
         return switch (op) {
             .plus => .{ .integer = left + right },
             .minus => .{ .integer = left - right },
-            .assign => .{ .integer = left * right },
+            .asterisk => .{ .integer = left * right },
             .slash => .{ .integer = @divTrunc(left, right) },
             .equals => .{ .boolean = left == right },
             .greater_than => .{ .boolean = left > right },
             .greater_than_or_eq => .{ .boolean = left >= right },
             .less_than => .{ .boolean = left < right },
             .less_than_or_eq => .{ .boolean = left <= right },
-            else => ErrorKind.IllegalOperator,
+            else => std.debug.panic("TODO: implement operator: {any}", .{op}),
         };
     }
 
