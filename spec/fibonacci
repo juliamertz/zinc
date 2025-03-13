@@ -7,4 +7,4 @@
    }
  };
 
-dbg(fibonacci(30))
+dbg(fibonacci(14))

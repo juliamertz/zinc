@@ -30,12 +30,13 @@ pub const Value = union(enum) {
     boolean: bool,
     function: Function,
     builtin: BuiltinPtr,
+    list: []Value,
     module: Module,
     null,
 };
 
 pub const Module = struct {
-    scope: *Scope,
+    scope: Scope,
 };
 
 const Function = struct {
@@ -72,6 +73,14 @@ pub const Scope = struct {
         return false;
     }
 
+    fn retrieveLocal(self: *const Self, key: []const u8) ?Value {
+        if (self.variables.get(key)) |binding| {
+            return binding.value;
+        }
+
+        return null;
+    }
+
     fn retrieve(self: *Self, key: []const u8) ?Value {
         if (self.variables.get(key)) |binding| {
             return binding.value;
@@ -99,6 +108,19 @@ pub const Scope = struct {
             parent.assignGlobal(key, value);
         }
     }
+
+    fn printDebug(self: *const Self) !void {
+        var stdout = std.io.getStdOut().writer();
+        var variables = self.variables.iterator();
+        while (variables.next()) |variable| {
+            const binding: ValueBinding = variable.value_ptr.*;
+            switch (binding.value) {
+                .string => |str| try stdout.print("identifier: {s}: type: string, value: {s}\n", .{ variable.key_ptr.*, str }),
+                .builtin => try stdout.print("builtin function: {s}\n", .{variable.key_ptr.*}),
+                else => try stdout.print("{s}: {any}\n", .{ variable.key_ptr.*, binding }),
+            }
+        }
+    }
 };
 
 pub const Interpreter = struct {
@@ -112,7 +134,7 @@ pub const Interpreter = struct {
         var scope = Scope.init(alloc, null);
 
         const builtins_module = builtins.module(alloc);
-        scope.bind("builtins", .{ .value = .{ .module = builtins_module }, .mutable = false });
+        scope.bind("std", .{ .value = .{ .module = builtins_module }, .mutable = false });
 
         return Self{
             .alloc = alloc,
@@ -131,21 +153,26 @@ pub const Interpreter = struct {
         return kind;
     }
 
-    pub fn evaluate(self: *Self, nodes: []ast.Node) !void {
-        for (nodes) |node|
-            _ = try self.evaluateNode(node, &self.root);
-
-        try self.printDebug();
-    }
+    // pub fn evaluate(self: *Self, nodes: []ast.Node) !void {
+    //     for (nodes) |node|
+    //         _ = self.evaluateNode(node, &self.root) catch {};
+    //
+    //     try self.printDebug();
+    // }
 
     pub fn evaluateModule(self: *Self, module: ast.Module) !Module {
-        var scope = Scope.init(self.alloc, null);
+        var scope = Scope.init(self.alloc, &self.root);
         for (module.nodes) |node|
-            _ = try self.evaluateNode(node, &scope);
+            _ = self.evaluateNode(node, &scope) catch {};
 
-        try self.printDebug();
+        for (self.errors.items) |err| {
+            std.debug.print("\nERROR {any}: {s}\n", .{ err.kind, err.message });
+        }
 
-        return .{ .scope = &scope };
+        try scope.printDebug();
+        // try self.printDebug();
+
+        return .{ .scope = scope };
     }
 
     /// Evaluate block line by line and return last value
@@ -209,6 +236,20 @@ pub const Interpreter = struct {
                 );
             },
 
+            .while_loop => |loop| {
+                var next_value: bool = switch (try self.evaluateExpression(loop.condition, scope)) {
+                    .boolean => |val| val,
+                    else => unreachable,
+                };
+                while (next_value) {
+                    _ = try self.evaluateBlock(loop.body, scope);
+                    next_value = switch (try self.evaluateExpression(loop.condition, scope)) {
+                        .boolean => |val| val,
+                        else => unreachable,
+                    };
+                }
+            },
+
             .@"return" => return ErrorKind.IllegalReturn,
 
             else => std.debug.panic("Unhandled statement: {any}", .{statement}),
@@ -224,10 +265,6 @@ pub const Interpreter = struct {
             .prefix_operator => |val| try self.evaluatePrefixExpression(val.*, scope),
             .grouped_expression => |group| try self.evaluateExpression(group.expression, scope),
             .identifier => |ident| blk: {
-                if (builtins.fromStr(ident)) |builtin| {
-                    return .{ .builtin = builtin };
-                }
-
                 if (scope.retrieve(ident)) |value| {
                     break :blk value;
                 } else {
@@ -242,24 +279,22 @@ pub const Interpreter = struct {
             },
 
             .function_call => |func| {
-                switch (func.function) {
-                    // TODO: remove this hack and put std in scope
-                    .identifier => |ident| if (builtins.fromStr(ident)) |builtin| {
-                        var values = Array(Value).init(self.alloc);
-                        for (func.arguments) |exp| {
-                            const value = try self.evaluateExpression(exp, scope);
-                            try values.append(value);
-                        }
-
-                        return builtin(values.items);
-                    },
-                    else => {},
-                }
-
                 const val = try self.evaluateExpression(func.function, scope);
                 const func_ptr = switch (val) {
                     .function => |v| v,
-                    else => return ErrorKind.NotAFunction,
+                    .builtin => |builtin| {
+                        var arguments = Array(Value).init(self.alloc);
+                        for (func.arguments) |arg| {
+                            const value = try self.evaluateExpression(arg, scope);
+                            try arguments.append(value);
+                        }
+                        return builtin(arguments.items);
+                    },
+                    else => return self.errorMessage(
+                        ErrorKind.NotAFunction,
+                        "Attempted to call a value which is not a function: {any}",
+                        .{val},
+                    ),
                 };
 
                 var func_scope = Scope.init(self.alloc, scope);
@@ -299,6 +334,14 @@ pub const Interpreter = struct {
                 // // }
                 // }
                 std.debug.panic("todo implement match, value: {}", .{value});
+            },
+
+            .list => |expressions| {
+                var values = self.alloc.alloc(Value, expressions.len) catch @panic("buy more RAM");
+                for (expressions, 0..) |e, i| {
+                    values[i] = try self.evaluateExpression(e, scope);
+                }
+                return Value{ .list = values };
             },
 
             else => std.debug.panic("Unhandled expression: {any}", .{expr}),
@@ -386,6 +429,28 @@ pub const Interpreter = struct {
 
     fn evaluateInfixExpression(self: *Self, expr: ast.InfixExpression, scope: *Scope) ErrorKind!Value {
         const left = try self.evaluateExpression(expr.left, scope);
+
+        if (expr.operator == .chain) {
+            const module = switch (left) {
+                .module => |val| val,
+                else => @panic("TODO: not a module"),
+            };
+            const identifier = switch (expr.right) {
+                .identifier => |val| val,
+                else => @panic("TODO: not an identifier"),
+            };
+
+            const value = module.scope.retrieveLocal(identifier) orelse {
+                module.scope.printDebug() catch unreachable;
+                return self.errorMessage(
+                    ErrorKind.NoSuchVariable,
+                    "Unable to find identifier {s} in module",
+                    .{identifier},
+                );
+            };
+            return value;
+        }
+
         const right = try self.evaluateExpression(expr.right, scope);
 
         return switch (left) {

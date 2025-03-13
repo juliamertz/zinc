@@ -7,7 +7,8 @@ const BuiltinPtr = interpreter.BuiltinPtr;
 const function_map = std.StaticStringMap(BuiltinPtr).initComptime(.{
     .{ "dbg", dbg },
     .{ "print", print },
-    .{ "intToStr", intToStr },
+    .{ "len", len },
+    .{ "int_to_str", int_to_str },
 });
 
 pub fn fromStr(str: []const u8) ?BuiltinPtr {
@@ -25,7 +26,7 @@ pub fn module(alloc: std.mem.Allocator) interpreter.Module {
         scope.bind(key, binding);
     }
 
-    return .{ .scope = &scope };
+    return .{ .scope = scope };
 }
 
 // TODO:
@@ -43,6 +44,7 @@ fn print(args: []const Value) !Value {
             .builtin => "<builtin function>",
             .function => "<function>",
             .module => "<module>",
+            .list => "<list>", // TODO:
             .null => "null",
             .string => |val| val,
             .integer => |val| std.fmt.allocPrint(std.heap.page_allocator, "{d}", .{val}) catch unreachable,
@@ -57,8 +59,16 @@ fn print(args: []const Value) !Value {
     return .null;
 }
 
+fn len(args: []const Value) !Value {
+    switch (args[0]) {
+        .string => |val| return .{ .integer = @intCast(val.len) },
+        .list => |val| return .{ .integer = @intCast(val.len) },
+        else => unreachable, // TODO: error
+    }
+}
+
 // TODO: errors
-fn intToStr(args: []const Value) !Value {
+fn int_to_str(args: []const Value) !Value {
     if (args.len != 1) return .{ .string = "error: invalid arguments" };
     return switch (args[0]) {
         .integer => |val| .{ .string = std.fmt.allocPrint(std.heap.page_allocator, "{d}", .{val}) catch unreachable },

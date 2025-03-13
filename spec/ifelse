@@ -1,11 +1,7 @@
--- let num = 60;
--- let default = 25;
--- let a = if num > 50 { 
---   default 
--- } else {
---    num
--- };
-
-if 100 > 50 {
-  let a = "bigger";
-}
+let num = 60;
+let default = 25;
+let a = if num > 50 { 
+  default 
+} else {
+   num
+};

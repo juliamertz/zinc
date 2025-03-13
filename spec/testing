@@ -1,19 +1,20 @@
-func println(msg) {
-  print(msg + "\n")
-}
--- -- operator precedence is correct as long as we're reading right to left
--- -- so '10 - 10 * 5' is correct
--- -- but '5 * 10 - 50' is incorrect
--- -- parenthesis to force correct evaluation order
--- let correct = (5 * 10) - 50
--- let incorrect = 5 * 10 - 50
--- println("correct: " + intToStr(correct))
--- println("incorrect: " + intToStr(incorrect))
 
--- let a = 5 * 10 - 50
--- let b = 50 - 5 * 10
--- 
--- println("a: " + intToStr(a))
--- println("b: " + intToStr(b))
+let weekdays = [
+  "monday"
+  "tuesday"
+  "wednesday"
+  "thursday"
+  "friday"
+  "saturday"
+  "sunday"
+]
 
-let is = one == other
+let mut i = 0
+
+-- while i <= 7 {
+--   -- let weekday = weekdays[i]
+--   std.print("i: " + std.int_to_str(i) + "\n")   
+--   std.print("wassup", "yo", "\n")
+--   i = i + 1
+-- }
+

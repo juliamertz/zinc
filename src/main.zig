@@ -46,6 +46,29 @@ pub fn main() !void {
 
             // var interpreter = interp.Interpreter.new(arena.allocator());
             // try repl.run(arena.allocator(), &interpreter, content);
+        } else if (eql(subcommand, "lex")) {
+            const filepath = args.next() orelse @panic("no filepath given");
+            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer arena.deinit();
+
+            const max = std.math.maxInt(usize);
+            const content = try std.fs.cwd().readFileAlloc(arena.allocator(), filepath, max);
+
+            var lexer = lex.Lexer.init(content);
+            var token: lex.Token = lexer.readToken();
+            while (lexer.read_position <= lexer.content.len - 2) {
+                switch (token) {
+                    .ident => |val| std.debug.print("ident {c}\n", .{val}),
+                    else => std.debug.print("{any}\n", .{token}),
+                }
+
+                lexer.advance();
+                token = lexer.readToken();
+                try stdout.writeAll("hi");
+            }
+            try stdout.writeAll("bye");
+
+            // try stdout.writeAll(content);
         }
         //
         else {

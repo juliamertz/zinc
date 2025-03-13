@@ -82,7 +82,7 @@ pub const Parser = struct {
     const Self = @This();
 
     pub fn init(content: []const u8, alloc: std.mem.Allocator) Self {
-        var lexer = lex.Lexer.new(content);
+        var lexer = lex.Lexer.init(content);
         const curr = lexer.readToken();
         lexer.advance();
         const peek = lexer.readToken();
@@ -609,7 +609,10 @@ pub const Parser = struct {
                     expr.* = try self.parseModuleLiteral();
                     break :blk .{ .module_literal = expr };
                 },
-                .lbracket => .{ .list = try self.parseListExpression() },
+                .lbracket => blk: {
+                    print("parsing list expression", .{});
+                    break :blk .{ .list = try self.parseListExpression() };
+                },
 
                 else => return self.errorMessage(
                     ErrorKind.ExpressionExpected,
@@ -729,9 +732,10 @@ pub const Parser = struct {
 
         var expressions = Array(ast.Expression).init(self.alloc);
         while (self.curr_token != .rbracket) {
+            print("curr: {any}\n", .{self.curr_token});
             const e = try self.parseExpression(.lowest);
             try expressions.append(e);
-            if (self.curr_token == .comma) self.next(); // TODO: nice error if comma is missing between items
+            // if (self.curr_token == .comma) self.next(); // TODO: nice error if comma is missing between items
         }
 
         try self.consumeToken(.rbracket);

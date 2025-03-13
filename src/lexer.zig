@@ -97,7 +97,7 @@ pub const Lexer = struct {
 
     const Self = @This();
 
-    pub fn new(content: []const u8) Self {
+    pub fn init(content: []const u8) Self {
         return Self{
             .content = content,
         };
@@ -257,7 +257,7 @@ pub const Lexer = struct {
 };
 
 fn expectLexerOutput(input: []const u8, expected_tokens: []const Token) !void {
-    var lexer = Lexer.new(input);
+    var lexer = Lexer.init(input);
     for (expected_tokens, 0..) |expected, i| {
         const actual = lexer.readToken();
         lexer.advance();
