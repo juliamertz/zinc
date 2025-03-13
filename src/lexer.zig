@@ -155,7 +155,10 @@ pub const Lexer = struct {
                         self.skipWhitespace();
                         break :blk self.readToken();
                     },
-                    '>' => break :blk .arrow,
+                    '>' => {
+                        self.advance();
+                        break :blk .arrow;
+                    },
                     else => break :blk .minus,
                 }
             },
@@ -272,7 +275,7 @@ fn expectLexerOutput(input: []const u8, expected_tokens: []const Token) !void {
 
 test "Lexer - operators" {
     try expectLexerOutput(
-        "=+-!*/|& and or",
+        "=+-!*/|& and or ->",
         &[_]Token{
             .assign,
             .plus,
@@ -284,6 +287,7 @@ test "Lexer - operators" {
             .ampersand,
             .{ .keyword = .@"and" },
             .{ .keyword = .@"or" },
+            .arrow,
             .eof,
         },
     );

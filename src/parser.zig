@@ -1,3 +1,5 @@
+// TODO: rename module to something like struct?
+
 const std = @import("std");
 const ast = @import("ast.zig");
 const utils = @import("utils.zig");
@@ -111,19 +113,6 @@ pub const Parser = struct {
         self.peek_token = self.lexer.readToken();
     }
 
-    // /// Check if the current token is equal to passed in infix operator
-    // fn expectInfixOperator(self: *Self, expected: ast.InfixOperator) ErrorKind!void {
-    //     const operator = try self.scanInfixOperator();
-    //
-    //     if (operator != expected) {
-    //         return self.errorMessage(
-    //             ErrorKind.InvalidOperator,
-    //             "invalid operator expected: {any}, got: {any}",
-    //             .{ expected, operator },
-    //         );
-    //     }
-    // }
-
     /// Check if current token is equal to passed in keyword
     /// throws an error if it does not match
     fn expectKeyword(self: *Self, expected: lex.Keyword) ErrorKind!void {
@@ -167,6 +156,7 @@ pub const Parser = struct {
         self.next();
     }
 
+    
     pub fn parseModule(self: *Self) ErrorKind!ast.Module {
         return .{ .nodes = try self.parseNodes() };
     }
@@ -389,11 +379,7 @@ pub const Parser = struct {
     fn parseMatchArm(self: *Self) ErrorKind!ast.MatchArm {
         const patterns = try self.parseMatchPatterns();
 
-        // // '->' to indicate end of patterns
-        // try self.consumeToken(.minus);
-        // try self.consumeToken(.rangle);
-        std.debug.panic("TODO: arrow operator lexing", .{});
-
+        try self.consumeToken(.arrow);
         const expr = try self.parseExpression(.lowest);
         try self.consumeToken(.comma);
 
@@ -1053,36 +1039,36 @@ test "Parse - function call" {
     );
 }
 
-// test "Parse - match expression" {
-//     try expectAst(
-//         \\let age_group = match 5 {
-//         \\  0..10 -> "teens",
-//         \\  10..20 -> "twenties",
-//         \\};
-//     ,
-//         \\.statement:
-//         \\  .let:
-//         \\    .identifier: "age_group"
-//         \\    .value:
-//         \\      .match:
-//         \\        .value:
-//         \\          .integer_literal: 5
-//         \\        .arms:
-//         \\          .patterns:
-//         \\            .range:
-//         \\              .left: 0
-//         \\              .right: 10
-//         \\          .consequence:
-//         \\            .string_literal: "teens"
-//         \\          .patterns:
-//         \\            .range:
-//         \\              .left: 10
-//         \\              .right: 20
-//         \\          .consequence:
-//         \\            .string_literal: "twenties"
-//         \\    .mutable: false
-//     );
-// }
+test "Parse - match expression" {
+    try expectAst(
+        \\let age_group = match 5 {
+        \\  0..10 -> "teens",
+        \\  10..20 -> "twenties",
+        \\};
+    ,
+        \\.statement:
+        \\  .let:
+        \\    .identifier: "age_group"
+        \\    .value:
+        \\      .match:
+        \\        .value:
+        \\          .integer_literal: 5
+        \\        .arms:
+        \\          .patterns:
+        \\            .range:
+        \\              .left: 0
+        \\              .right: 10
+        \\          .consequence:
+        \\            .string_literal: "teens"
+        \\          .patterns:
+        \\            .range:
+        \\              .left: 10
+        \\              .right: 20
+        \\          .consequence:
+        \\            .string_literal: "twenties"
+        \\    .mutable: false
+    );
+}
 
 test "Parse - list expression" {
     try expectAst("let items = [10, 20, \"thirty\"];",
