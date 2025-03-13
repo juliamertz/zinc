@@ -168,6 +168,8 @@ pub const PrefixOperator = enum {
     minus,
 };
 
+// TODO: i don't like to have this duplication
+// also index and call operators don't actually live here
 pub const InfixOperator = enum {
     assign,
     chain,
@@ -176,6 +178,7 @@ pub const InfixOperator = enum {
     minus,
     asterisk,
     slash,
+    // index: Expression,
     equals,
     not_equal,
     less_than_or_eq,

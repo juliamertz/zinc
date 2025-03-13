@@ -5,17 +5,41 @@ const lex = @import("lexer.zig");
 
 const Array = std.ArrayList;
 const eql = std.meta.eql;
+const print = std.debug.print;
 
 const Precedence = enum {
     lowest,
-    equals,
-    less_greater,
-    sum,
-    product,
-    prefix,
-    call,
+    equals, // ==
+    less_greater, // > or <
+    sum, // +
+    product, // *
+    prefix, // -a or !a
+    call, // func()
+    index, // list[0]
 
     const Self = @This();
+
+    fn fromToken(token: lex.Token) Self {
+        return switch (token) {
+            .not_equal,
+            .equal,
+            => .equals,
+
+            .plus, .minus => .sum,
+            .asterisk, .slash => .product,
+
+            .less_than_or_eq,
+            .less_than,
+            .greater_than,
+            .greater_than_or_eq,
+            => .less_greater,
+
+            .lbracket => .index,
+            .lparen => .call,
+
+            else => .lowest,
+        };
+    }
 
     fn fromOperator(operator: anytype) Self {
         const T = @TypeOf(operator);
@@ -294,6 +318,9 @@ pub const Parser = struct {
             .minus => .minus,
             .asterisk => .asterisk,
             .slash => .slash,
+            .lbracket => {
+                @panic("found lbrakcet in infix operator");
+            },
             .not_equal => .not_equal,
             .less_than_or_eq => .less_than_or_eq,
             .less_than => .less_than,
@@ -631,31 +658,38 @@ pub const Parser = struct {
                 ),
             };
 
-        // while !self.peek_token_is(&TokenType::Semicolon) && precedence < self.peek_precedence()
-        while (self.peek_token != .semicolon and @intFromEnum(precedence) < 0) {
-            leftExpr = switch (self.curr_token) {
+        while (self.curr_token != .semicolon and self.curr_token != .eof and @intFromEnum(precedence) < @intFromEnum(Precedence.fromToken(self.curr_token))) {
+            switch (self.curr_token) {
                 .plus,
                 .minus,
                 .slash,
                 .asterisk,
                 .assign,
                 .dot,
-                => .{ .infix_operator = try self.parseInfixExpression(leftExpr) },
+                .less_than,
+                .greater_than,
+                .less_than_or_eq,
+                .greater_than_or_eq,
+                .equal,
+                .not_equal,
+                => {
+                    leftExpr = .{ .infix_operator = try self.parseInfixExpression(leftExpr) };
+                },
 
-                .lparen => blk: {
+                .lparen => {
                     const call_expr = try self.alloc.create(ast.FunctionCall);
                     call_expr.* = try self.parseFunctionCallExpression(leftExpr);
-                    break :blk ast.Expression{ .function_call = call_expr };
+                    leftExpr = ast.Expression{ .function_call = call_expr };
                 },
 
-                .lbracket => blk: {
+                .lbracket => {
                     const index_expr = try self.alloc.create(ast.IndexExpression);
                     index_expr.* = try self.parseIndexExpression(leftExpr);
-                    break :blk .{ .index = index_expr };
+                    leftExpr = .{ .index = index_expr };
                 },
 
-                else => null,
-            };
+                else => return leftExpr,
+            }
         }
 
         return leftExpr;
@@ -960,32 +994,32 @@ test "Parse - prefix operators" {
     );
 }
 
-// test "Parse - conditionals" {
-//     try expectAst(
-//         \\if 100 > 50 {
-//         \\  let a = "bigger";
-//         \\}
-//     ,
-//         \\.expression:
-//         \\  .if_else:
-//         \\    .condition:
-//         \\      .infix_operator:
-//         \\        .left:
-//         \\          .integer_literal: 100
-//         \\        .operator: .greater_than
-//         \\        .right:
-//         \\          .integer_literal: 50
-//         \\    .consequence:
-//         \\      .nodes:
-//         \\        .statement:
-//         \\          .let:
-//         \\            .identifier: "a"
-//         \\            .value:
-//         \\              .string_literal: "bigger"
-//         \\            .mutable: false
-//         \\    .alternative: null
-//     );
-// }
+test "Parse - conditionals" {
+    try expectAst(
+        \\if 100 > 50 {
+        \\  let a = "bigger";
+        \\}
+    ,
+        \\.expression:
+        \\  .if_else:
+        \\    .condition:
+        \\      .infix_operator:
+        \\        .left:
+        \\          .integer_literal: 100
+        \\        .operator: .greater_than
+        \\        .right:
+        \\          .integer_literal: 50
+        \\    .consequence:
+        \\      .nodes:
+        \\        .statement:
+        \\          .let:
+        \\            .identifier: "a"
+        \\            .value:
+        \\              .string_literal: "bigger"
+        \\            .mutable: false
+        \\    .alternative: null
+    );
+}
 
 test "Parse - grouped expressions" {
     try expectAst("let mygroup = 10 - (2 * 5);",
@@ -1017,7 +1051,8 @@ test "Parse - function call" {
         \\    .identifier: "greeting"
         \\    .value:
         \\      .function_call:
-        \\        .identifier: "greet"
+        \\        .function:
+        \\          .identifier: "greet"
         \\        .arguments:
         \\          .string_literal: "bob"
         \\    .mutable: false
@@ -1025,14 +1060,16 @@ test "Parse - function call" {
     try expectAst("greet(\"bob\")",
         \\.expression:
         \\  .function_call:
-        \\    .identifier: "greet"
+        \\    .function:
+        \\      .identifier: "greet"
         \\    .arguments:
         \\      .string_literal: "bob"
     );
     try expectAst("concat(\"left\", \"middle\", \"right\")",
         \\.expression:
         \\  .function_call:
-        \\    .identifier: "concat"
+        \\    .function:
+        \\      .identifier: "concat"
         \\    .arguments:
         \\      .string_literal: "left"
         \\      .string_literal: "middle"

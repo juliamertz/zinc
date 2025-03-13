@@ -1,7 +1,6 @@
 {
   inputs = {
-    # move to unstable once zls is merged
-    nixpkgs.url = "github:NixOS/nixpkgs/master";
+    nixpkgs.url = "github:NixOS/nixpkgs/master"; # move to unstable once zls is merged
     zon2nix = {
       url = "github:nix-community/zon2nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -48,6 +47,15 @@
               hash = "sha256-g9AVQF48HvaOzwm6Fr935+2+Ch+nvUV2afygb3iUflw=";
             };
           };
+
+          codelldb = stdenv.mkDerivation {
+            name = "codelldb";
+            src = vscode-extensions.vadimcn.vscode-lldb;
+            installPhase = ''
+             mkdir -p $out/bin
+             cp -r $src/share/vscode/extensions/vadimcn.vscode-lldb/adapter/codelldb $out/bin/codelldb
+            '';
+          };
         }
       );
 
@@ -62,7 +70,7 @@
               "zig build run --watch --prominent-compile-errors -- $@";
             debug = # sh
               ''
-                zig build && lldb ./zig-out/bin/zinc
+                zig build && lldb ./zig-out/bin/zinc -- $@
               '';
             tests = # sh
               ''
@@ -73,7 +81,7 @@
                 }
 
                 rm -vrf test-out
-                zig build test
+                zig build test || show_diff
               '';
           };
         in

@@ -10,5 +10,5 @@
 -- println("correct: " + intToStr(correct))
 -- println("incorrect: " + intToStr(incorrect))
 
-let a = 10 + 20
+let val = 100 > 50
 
