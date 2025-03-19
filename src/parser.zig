@@ -1,5 +1,3 @@
-// TODO: rename module to something like struct?
-
 const std = @import("std");
 const ast = @import("ast.zig");
 const utils = @import("utils.zig");

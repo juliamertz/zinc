@@ -1,0 +1,19 @@
+
+let weekdays = [
+  "monday"
+  "tuesday"
+  "wednesday"
+  "thursday"
+  "friday"
+  "saturday"
+  "sunday"
+]
+
+let mut i = 0
+
+while i <= 7 {
+  -- let weekday = weekdays[i]
+  std.print("i: " + std.int_to_str(i) + "\n")   
+  i = i + 1
+}
+

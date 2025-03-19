@@ -3,86 +3,77 @@ const utils = @import("utils.zig");
 const lex = @import("lexer.zig");
 const repl = @import("repl.zig");
 const interp = @import("interpreter/main.zig");
-
-const Parser = @import("parser.zig").Parser;
+const parser = @import("parser.zig");
 
 const stdout = std.io.getStdOut().writer();
 
+const Error = error{
+    NoSubcommand,
+    NoSuchCommand,
+    InvalidPath,
+};
+
+const Subcommand = enum {
+    repl,
+    eval,
+    parse,
+
+    const lookup: std.StaticStringMap(Subcommand) = .initComptime(.{
+        .{ "repl", .repl },
+        .{ "eval", .eval },
+        .{ "parse", .parse },
+    });
+};
+
 pub fn main() !void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const allocator = arena.allocator();
+    defer arena.deinit();
+
     var args = std.process.args();
     _ = args.skip();
 
-    if (args.next()) |subcommand| {
-        if (eql(subcommand, "repl")) {
-            try repl.start();
-        }
-        //
-        else if (eql(subcommand, "eval")) {
-            const filepath = args.next() orelse @panic("no filepath given");
-            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-            defer arena.deinit();
+    const next = args.next() orelse return Error.NoSuchCommand;
 
-            const max = std.math.maxInt(usize);
-            const content = try std.fs.cwd().readFileAlloc(arena.allocator(), filepath, max);
-            // try stdout.print("content:\n\n{s}\n", .{content});
-
-            var interpreter = interp.Interpreter.init(arena.allocator());
-            try repl.run(arena.allocator(), &interpreter, content);
-        } else if (eql(subcommand, "parse")) {
-            const filepath = args.next() orelse @panic("no filepath given");
-            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-            defer arena.deinit();
-
-            const max = std.math.maxInt(usize);
-            const content = try std.fs.cwd().readFileAlloc(arena.allocator(), filepath, max);
-            try stdout.print("content:\n\n{s}\n", .{content});
-
-            var parser = Parser.init(content, arena.allocator());
-            const nodes = parser.parseNodes() catch |err| {
-                parser.debug("Parsing errors", true);
-                return err;
-            };
-            try utils.printAst(arena.allocator(), nodes);
-
-            // var interpreter = interp.Interpreter.new(arena.allocator());
-            // try repl.run(arena.allocator(), &interpreter, content);
-        } else if (eql(subcommand, "lex")) {
-            const filepath = args.next() orelse @panic("no filepath given");
-            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-            defer arena.deinit();
-
-            const max = std.math.maxInt(usize);
-            const content = try std.fs.cwd().readFileAlloc(arena.allocator(), filepath, max);
-
-            var lexer = lex.Lexer.init(content);
-            var token: lex.Token = lexer.readToken();
-            while (lexer.read_position <= lexer.content.len - 2) {
-                switch (token) {
-                    .ident => |val| std.debug.print("ident {c}\n", .{val}),
-                    else => std.debug.print("{any}\n", .{token}),
-                }
-
-                lexer.advance();
-                token = lexer.readToken();
-                try stdout.writeAll("hi");
-            }
-            try stdout.writeAll("bye");
-
-            // try stdout.writeAll(content);
-        }
-        //
-        else {
-            try stdout.print("Invalid subcommand: {s}\n", .{subcommand});
-            std.process.exit(1);
-        }
-    }
-    //
-    else {
+    if (Subcommand.lookup.get(next)) |subcommand| switch (subcommand) {
+        .repl => try handleReplCommand(),
+        .parse => try handleParseCommand(allocator, &args),
+        .eval => try handleEvalCommand(allocator, &args),
+    } else {
         try stdout.print("No subcommand given.\n", .{});
         std.process.exit(1);
     }
 }
 
-pub fn eql(a: []const u8, b: []const u8) bool {
-    return std.mem.eql(u8, a, b);
+fn handleReplCommand() !void {
+    try repl.start();
+}
+
+fn handleEvalCommand(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
+    const filepath = args.next() orelse return Error.InvalidPath;
+    const content = try readFile(allocator, filepath);
+    var interpreter = interp.Interpreter.init(allocator);
+    try repl.run(allocator, &interpreter, content);
+}
+
+fn handleParseCommand(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
+    const filepath = args.next() orelse return Error.InvalidPath;
+    const content = try readFile(allocator, filepath);
+    try stdout.print("content:\n\n{s}\n", .{content});
+
+    var p = parser.Parser.init(content, allocator);
+    const nodes = p.parseNodes() catch |err| {
+        p.debug("Parsing errors", true);
+        return err;
+    };
+
+    try utils.printAst(allocator, nodes);
+}
+
+fn readFile(allocator: std.mem.Allocator, filepath: []const u8) ![]const u8 {
+    return try std.fs.cwd().readFileAlloc(
+        allocator,
+        filepath,
+        std.math.maxInt(usize),
+    );
 }

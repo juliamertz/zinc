@@ -1,6 +1,6 @@
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/master"; # move to unstable once zls is merged
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     zon2nix = {
       url = "github:nix-community/zon2nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -24,6 +24,7 @@
     {
       packages = forAllSystems (
         pkgs: with pkgs; {
+
           default = stdenv.mkDerivation (finalAttrs: {
             pname = "zinc";
             version = "0.0.1";
@@ -48,14 +49,6 @@
             };
           };
 
-          codelldb = stdenv.mkDerivation {
-            name = "codelldb";
-            src = vscode-extensions.vadimcn.vscode-lldb;
-            installPhase = ''
-             mkdir -p $out/bin
-             cp -r $src/share/vscode/extensions/vadimcn.vscode-lldb/adapter/codelldb $out/bin/codelldb
-            '';
-          };
         }
       );
 
@@ -63,6 +56,7 @@
         pkgs:
         with pkgs;
         let
+
           shellScripts = {
             run = # sh
               "zig build run --prominent-compile-errors -- $@";
